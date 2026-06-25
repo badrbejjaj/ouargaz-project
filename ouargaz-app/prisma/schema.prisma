@@ -1,0 +1,272 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+  engineType      = "library"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  role      String
+  name      String
+  email     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  auditLogs AuditLog[]
+}
+
+model Jaugeage {
+  id              Int      @id @default(autoincrement())
+  date            String
+  reservoir       String
+  niveau_mm       Float
+  temperature     Float
+  pression        Float
+  volume_obs      Float    @default(0)
+  vcf             Float    @default(1)
+  gsv             Float    @default(0)
+  masse_liquide_t Float    @default(0)
+  volume_vapeur   Float    @default(0)
+  pression_abs    Float    @default(0)
+  densite_vapeur  Float    @default(0)
+  masse_vapeur_t  Float    @default(0)
+  tonnage_total   Float    @default(0)
+  remplissage_pct Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@unique([date, reservoir])
+}
+
+model VenteClient {
+  id        Int      @id @default(autoincrement())
+  date      String
+  client    String
+  marque    String
+  numero_bc String?
+  numero_bl String?
+  qte_12kg  Float    @default(0)
+  qte_3kg   Float    @default(0)
+  qte_6kg   Float    @default(0)
+  qte_34kg  Float    @default(0)
+  poids_kg  Float    @default(0)
+  poids_t   Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StockBouteilles {
+  id                Int      @id @default(autoincrement())
+  date              String
+  marque            String
+  pleines_12kg      Float    @default(0)
+  pleines_6kg       Float    @default(0)
+  pleines_3kg       Float    @default(0)
+  defectueuses_12kg Float    @default(0)
+  defectueuses_6kg  Float    @default(0)
+  defectueuses_3kg  Float    @default(0)
+  stock_pleines_kg  Float    @default(0)
+  stock_def_kg      Float    @default(0)
+  stock_cond_kg     Float    @default(0)
+  stock_cond_t      Float    @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@unique([date, marque])
+}
+
+model Approvisionnement {
+  id           Int      @id @default(autoincrement())
+  mois         String
+  quinzaine    String?
+  camion       String?
+  transporteur String?
+  numero_bc    String?
+  date_bc      String?
+  produit      String?
+  provenance   String?
+  numero_bl    String?
+  date_bl      String?
+  numero_br    String?
+  date_br      String
+  q_net        Float
+  q_bl         Float
+  ecart        Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model JourneeStatus {
+  id         Int       @id @default(autoincrement())
+  date       String    @unique
+  cloturee   Boolean   @default(false)
+  closedBy   String?
+  closedAt   DateTime?
+  reopenedBy String?
+  reopenedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model BaremeReservoir {
+  id        Int   @id @default(autoincrement())
+  niveau_mm Int   @unique
+  volume_l  Float
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  username  String
+  role      String
+  action    String
+  module    String
+  details   String?
+  oldValue  String?
+  newValue  String?
+  motif     String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model Client {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  marque    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Marque {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Transporteur {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Provenance {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+
+model CamionDepositaire {
+  id                 Int      @id @default(autoincrement())
+  date               String
+  client             String
+  marque             String
+  chauffeur          String
+  matricule          String
+  numero_bc          String
+  numero_bl_sortie   String?
+  statut             String   @default("EN_ATTENTE")
+  motif_annulation   String?
+
+  arriveeAt          DateTime @default(now())
+  entreeAt           DateTime?
+  debutEmplissageAt  DateTime?
+  finChargementAt    DateTime?
+  sortieAt           DateTime?
+
+  saisie_12kg        Int      @default(0)
+  saisie_6kg         Int      @default(0)
+  saisie_3kg         Int      @default(0)
+  vides_12kg         Int      @default(0)
+  vides_6kg          Int      @default(0)
+  vides_3kg          Int      @default(0)
+  def_rendues_12kg   Int      @default(0)
+  def_rendues_6kg    Int      @default(0)
+  def_rendues_3kg    Int      @default(0)
+  etrangeres_12kg    Int      @default(0)
+  etrangeres_6kg     Int      @default(0)
+  etrangeres_3kg     Int      @default(0)
+
+  terrain_12kg       Int      @default(0)
+  terrain_6kg        Int      @default(0)
+  terrain_3kg        Int      @default(0)
+  terrain_vides_12kg Int      @default(0)
+  terrain_vides_6kg  Int      @default(0)
+  terrain_vides_3kg  Int      @default(0)
+  terrain_etr_12kg   Int      @default(0)
+  terrain_etr_6kg    Int      @default(0)
+  terrain_etr_3kg    Int      @default(0)
+
+  charge_12kg        Int      @default(0)
+  charge_6kg         Int      @default(0)
+  charge_3kg         Int      @default(0)
+  def_traitees_12kg  Int      @default(0)
+  def_traitees_6kg   Int      @default(0)
+  def_traitees_3kg   Int      @default(0)
+  def_acceptees_12kg Int      @default(0)
+  def_acceptees_6kg  Int      @default(0)
+  def_acceptees_3kg  Int      @default(0)
+  def_refusees_12kg  Int      @default(0)
+  def_refusees_6kg   Int      @default(0)
+  def_refusees_3kg   Int      @default(0)
+
+  sortie_12kg        Int      @default(0)
+  sortie_6kg         Int      @default(0)
+  sortie_3kg         Int      @default(0)
+  sortie_vides_12kg  Int      @default(0)
+  sortie_vides_6kg   Int      @default(0)
+  sortie_vides_3kg   Int      @default(0)
+  sortie_etr_12kg    Int      @default(0)
+  sortie_etr_6kg     Int      @default(0)
+  sortie_etr_3kg     Int      @default(0)
+
+  createdBy          String?
+  enteredBy          String?
+  processedBy        String?
+  exitedBy           String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  logs               CamionMovementLog[]
+}
+
+model CamionMovementLog {
+  id        Int      @id @default(autoincrement())
+  camionId  Int
+  action    String
+  fromStatus String?
+  toStatus   String?
+  username  String
+  role      String
+  details   String?
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+  camion    CamionDepositaire @relation(fields: [camionId], references: [id])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  role      String
+  title     String
+  message   String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model ProfileDashboardConfig {
+  id        Int      @id @default(autoincrement())
+  role      String   @unique
+  kpis      String   @default("[]")
+  menus     String   @default("[]")
+  charts    String   @default("[]")
+  updatedAt DateTime @updatedAt
+}

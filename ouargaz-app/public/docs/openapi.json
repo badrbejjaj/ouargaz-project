@@ -1,0 +1,482 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "OUARGAZ API",
+    "description": "Documentation interactive des API pour la plateforme OUARGAZ (Next.js & Application Mobile).",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Serveur actuel"
+    }
+  ],
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "summary": "Connexion utilisateur",
+        "description": "Authentifie un utilisateur et configure le cookie de session `ouargaz-session`.",
+        "tags": ["Authentification"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Connexion réussie",
+            "headers": {
+              "Set-Cookie": {
+                "schema": { "type": "string" },
+                "description": "Cookie de session HTTPOnly `ouargaz-session`"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "integer" },
+                        "username": { "type": "string" },
+                        "role": { "type": "string" },
+                        "name": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Paramètres manquants" },
+          "401": { "description": "Identifiant ou mot de passe incorrect" },
+          "500": { "description": "Erreur serveur" }
+        }
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "summary": "Vérifier la session active",
+        "description": "Renvoie les informations de l'utilisateur connecté à partir du cookie de session.",
+        "tags": ["Authentification"],
+        "responses": {
+          "200": {
+            "description": "Session récupérée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": { "type": "integer" },
+                        "username": { "type": "string" },
+                        "role": { "type": "string" },
+                        "name": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Déconnexion de l'utilisateur",
+        "description": "Supprime le cookie de session et enregistre un événement d'audit.",
+        "tags": ["Authentification"],
+        "responses": {
+          "200": {
+            "description": "Déconnexion réussie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mouvements-camions": {
+      "get": {
+        "summary": "Liste des mouvements de camions",
+        "description": "Récupère les camions enregistrés selon les filtres de statut et de date.",
+        "tags": ["Mouvements Camions"],
+        "parameters": [
+          { "name": "statut", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Statut spécifique ou 'TOUS'" },
+          { "name": "date", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Date au format YYYY-MM-DD" },
+          { "name": "all", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Passer '1' pour inclure tous les statuts (y compris sortis/annulés)" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Liste de camions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "camions": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Camion" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Ajouter un camion en file d'attente",
+        "description": "Ajoute un nouveau camion avec ses bouteilles vides, défectueuses et étrangères ramenées à l'entrée.",
+        "tags": ["Mouvements Camions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["client", "marque", "matricule", "chauffeur", "numero_bc"],
+                "properties": {
+                  "client": { "type": "string" },
+                  "marque": { "type": "string" },
+                  "matricule": { "type": "string" },
+                  "chauffeur": { "type": "string" },
+                  "numero_bc": { "type": "string" },
+                  "date": { "type": "string", "description": "YYYY-MM-DD" },
+                  "vides_12kg": { "type": "integer" },
+                  "vides_6kg": { "type": "integer" },
+                  "vides_3kg": { "type": "integer" },
+                  "def_rendues_12kg": { "type": "integer" },
+                  "def_rendues_6kg": { "type": "integer" },
+                  "def_rendues_3kg": { "type": "integer" },
+                  "etrangeres_12kg": { "type": "integer" },
+                  "etrangeres_6kg": { "type": "integer" },
+                  "etrangeres_3kg": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Camion créé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "camion": { "$ref": "#/components/schemas/Camion" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Données requises manquantes" },
+          "401": { "description": "Non authentifié" },
+          "403": { "description": "Rôle non autorisé" }
+        }
+      },
+      "put": {
+        "summary": "Mettre à jour ou changer le statut d'un camion",
+        "description": "Effectue des actions sur le cycle de vie d'un camion (update-attente, annuler, entrer, terrain, demarrer, terminer, sortir).",
+        "tags": ["Mouvements Camions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id", "action"],
+                "properties": {
+                  "id": { "type": "integer" },
+                  "action": {
+                    "type": "string",
+                    "enum": ["update-attente", "annuler", "entrer", "terrain", "demarrer", "terminer", "sortir"]
+                  },
+                  "motif": { "type": "string", "description": "Requis pour action 'annuler'" },
+                  "terrain_vides_12kg": { "type": "integer" },
+                  "terrain_vides_6kg": { "type": "integer" },
+                  "terrain_vides_3kg": { "type": "integer" },
+                  "def_rendues_12kg": { "type": "integer" },
+                  "def_rendues_6kg": { "type": "integer" },
+                  "def_rendues_3kg": { "type": "integer" },
+                  "terrain_etr_12kg": { "type": "integer" },
+                  "terrain_etr_6kg": { "type": "integer" },
+                  "terrain_etr_3kg": { "type": "integer" },
+                  "charge_12kg": { "type": "integer", "description": "Requis pour action 'terminer'" },
+                  "charge_6kg": { "type": "integer", "description": "Requis pour action 'terminer'" },
+                  "charge_3kg": { "type": "integer", "description": "Requis pour action 'terminer'" },
+                  "def_acceptees_12kg": { "type": "integer" },
+                  "def_acceptees_6kg": { "type": "integer" },
+                  "def_acceptees_3kg": { "type": "integer" },
+                  "numero_bl_sortie": { "type": "string", "description": "Requis pour action 'sortir'" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Action effectuée avec succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "camion": { "$ref": "#/components/schemas/Camion" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Action non valide ou conditions non remplies" },
+          "401": { "description": "Non authentifié" },
+          "403": { "description": "Rôle non autorisé" },
+          "404": { "description": "Camion introuvable" }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "summary": "Obtenir les notifications de l'utilisateur",
+        "description": "Récupère les 25 dernières notifications destinées au rôle de l'utilisateur connecté.",
+        "tags": ["Notifications"],
+        "responses": {
+          "200": {
+            "description": "Liste de notifications",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "notifications": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "integer" },
+                          "role": { "type": "string" },
+                          "title": { "type": "string" },
+                          "message": { "type": "string" },
+                          "link": { "type": "string" },
+                          "read": { "type": "boolean" },
+                          "createdAt": { "type": "string", "format": "date-time" }
+                        }
+                      }
+                    },
+                    "unread": { "type": "integer", "description": "Nombre de notifications non lues" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Marquer une ou toutes les notifications comme lues",
+        "description": "Si un `id` est fourni dans le corps, marque cette notification comme lue. Sinon, marque toutes les notifications du rôle comme lues.",
+        "tags": ["Notifications"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "description": "ID optionnel de la notification" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Marquer toutes les notifications comme lues",
+        "description": "Marque toutes les notifications du rôle connecté comme lues.",
+        "tags": ["Notifications"],
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stock": {
+      "get": {
+        "summary": "Liste de l'état des stocks de bouteilles",
+        "description": "Récupère les stocks de bouteilles enregistrés par date ou plage de dates.",
+        "tags": ["Stocks"],
+        "parameters": [
+          { "name": "date", "in": "query", "schema": { "type": "string" }, "description": "Date YYYY-MM-DD" },
+          { "name": "from", "in": "query", "schema": { "type": "string" }, "description": "Date de début YYYY-MM-DD" },
+          { "name": "to", "in": "query", "schema": { "type": "string" }, "description": "Date de fin YYYY-MM-DD" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Liste de stocks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/StockBouteilles" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Sauvegarder l'état des stocks pour un jour donné",
+        "description": "Sauvegarde ou met à jour les stocks de bouteilles pour une date donnée.",
+        "tags": ["Stocks"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["date", "rows"],
+                "properties": {
+                  "date": { "type": "string" },
+                  "rows": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["marque"],
+                      "properties": {
+                        "marque": { "type": "string" },
+                        "pleines_12kg": { "type": "number" },
+                        "pleines_6kg": { "type": "number" },
+                        "pleines_3kg": { "type": "number" },
+                        "defectueuses_12kg": { "type": "number" },
+                        "defectueuses_6kg": { "type": "number" },
+                        "defectueuses_3kg": { "type": "number" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sauvegarde réussie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Date requise" },
+          "403": { "description": "Journée clôturée ou accès refusé" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Camion": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "date": { "type": "string" },
+          "client": { "type": "string" },
+          "marque": { "type": "string" },
+          "matricule": { "type": "string" },
+          "chauffeur": { "type": "string" },
+          "numero_bc": { "type": "string" },
+          "statut": { "type": "string" },
+          "saisie_12kg": { "type": "integer" },
+          "saisie_6kg": { "type": "integer" },
+          "saisie_3kg": { "type": "integer" },
+          "vides_12kg": { "type": "integer" },
+          "vides_6kg": { "type": "integer" },
+          "vides_3kg": { "type": "integer" },
+          "def_rendues_12kg": { "type": "integer" },
+          "def_rendues_6kg": { "type": "integer" },
+          "def_rendues_3kg": { "type": "integer" },
+          "etrangeres_12kg": { "type": "integer" },
+          "etrangeres_6kg": { "type": "integer" },
+          "etrangeres_3kg": { "type": "integer" }
+        }
+      },
+      "StockBouteilles": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "date": { "type": "string" },
+          "marque": { "type": "string" },
+          "pleines_12kg": { "type": "number" },
+          "pleines_6kg": { "type": "number" },
+          "pleines_3kg": { "type": "number" },
+          "defectueuses_12kg": { "type": "number" },
+          "defectueuses_6kg": { "type": "number" },
+          "defectueuses_3kg": { "type": "number" },
+          "stock_pleines_kg": { "type": "number" },
+          "stock_def_kg": { "type": "number" },
+          "stock_cond_kg": { "type": "number" },
+          "stock_cond_t": { "type": "number" }
+        }
+      }
+    }
+  }
+}
