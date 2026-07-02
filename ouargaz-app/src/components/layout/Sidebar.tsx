@@ -16,6 +16,8 @@ import {
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
+  Users2,
+  Layers,
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -58,6 +60,14 @@ const navGroups: Array<{ group: string; items: NavItem[] }> = [
       { href: '/cloture', icon: ShieldCheck, label: 'Validation / Clôture', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF'] },
       { href: '/audit', icon: SlidersHorizontal, label: 'Pistes d’Audit', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE'] },
       { href: '/administration', icon: LockKeyhole, label: 'Administration', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE'] },
+      { href: '/administration/depositaires', icon: Users2, label: 'Dépositaires', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE'] },
+    ],
+  },
+  {
+    group: 'DÉPOSITAIRE',
+    items: [
+      { href: '/suivi-camions', icon: Layers, label: 'Suivi Camions', roles: ['DEPOSITAIRE'] },
+      { href: '/suivi-camions/dashboard', icon: BarChart3, label: 'Tableau de bord', roles: ['DEPOSITAIRE'] },
     ],
   },
 ]
@@ -69,6 +79,7 @@ const roleColors: Record<string, string> = {
   CONSULTATION: '#00D97E',
   AGENT_SAISIE: '#FF6B00',
   CHEF_EQUIPE: '#0066CC',
+  DEPOSITAIRE: '#8B5CF6',
 }
 
 const roleLabels: Record<string, string> = {
@@ -78,6 +89,7 @@ const roleLabels: Record<string, string> = {
   CONSULTATION: 'Consultation',
   AGENT_SAISIE: 'Agent de saisie / garde',
   CHEF_EQUIPE: 'Chef d’équipe',
+  DEPOSITAIRE: 'Dépositaire',
 }
 
 export default function Sidebar({ user, collapsed, onCollapseToggle, currentPath }: SidebarProps) {

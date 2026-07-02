@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   if (!canAdmin(session.role)) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
   const users = await prisma.user.findMany({
-    select: { id: true, username: true, name: true, role: true, email: true, active: true },
+    select: { id: true, username: true, name: true, role: true, email: true, active: true, clientId: true },
     orderBy: { username: 'asc' },
   })
   return NextResponse.json({ users })
@@ -20,10 +20,10 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   if (!canAdmin(session.role)) return NextResponse.json({ error: 'Accès réservé au Chef de Centre / Adjoint' }, { status: 403 })
 
-  const { username, name, password, role, email } = await req.json()
+  const { username, name, password, role, email, clientId } = await req.json()
   if (!username || !name || !password || !role) return NextResponse.json({ error: 'Champs obligatoires manquants' }, { status: 400 })
 
-  const validRoles = ['CHEF_CENTRE','ADJOINT_CHEF_CENTRE','ADMINISTRATIF','AGENT_SAISIE','CHEF_EQUIPE','CONSULTATION']
+  const validRoles = ['CHEF_CENTRE','ADJOINT_CHEF_CENTRE','ADMINISTRATIF','AGENT_SAISIE','CHEF_EQUIPE','CONSULTATION','DEPOSITAIRE']
   if (!validRoles.includes(role)) return NextResponse.json({ error: 'Rôle invalide' }, { status: 400 })
 
   if (password.length < 6) return NextResponse.json({ error: 'Mot de passe trop court (6 caractères minimum)' }, { status: 400 })
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   try {
     const hashed = await bcrypt.hash(password, 10)
     const user = await prisma.user.create({
-      data: { username: username.trim(), name: name.trim(), password: hashed, role, email: email || null },
+      data: { username: username.trim(), name: name.trim(), password: hashed, role, email: email || null, clientId: clientId ? Number(clientId) : null },
     })
 
     await prisma.auditLog.create({
@@ -53,15 +53,16 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   if (!canAdmin(session.role)) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
-  const { id, active, password, username, name, role, email } = await req.json()
+  const { id, active, password, username, name, role, email, clientId } = await req.json()
   if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
 
-  const validRoles = ['CHEF_CENTRE','ADJOINT_CHEF_CENTRE','ADMINISTRATIF','AGENT_SAISIE','CHEF_EQUIPE','CONSULTATION']
+  const validRoles = ['CHEF_CENTRE','ADJOINT_CHEF_CENTRE','ADMINISTRATIF','AGENT_SAISIE','CHEF_EQUIPE','CONSULTATION','DEPOSITAIRE']
   const updateData: Record<string, unknown> = {}
   if (typeof active === 'boolean') updateData.active = active
   if (typeof username === 'string' && username.trim()) updateData.username = username.trim()
   if (typeof name === 'string' && name.trim()) updateData.name = name.trim()
   if (typeof email === 'string') updateData.email = email.trim() || null
+  if (clientId !== undefined) updateData.clientId = clientId ? Number(clientId) : null
   if (typeof role === 'string') {
     if (!validRoles.includes(role)) return NextResponse.json({ error: 'Rôle invalide' }, { status: 400 })
     updateData.role = role

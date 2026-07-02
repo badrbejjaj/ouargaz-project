@@ -5,6 +5,7 @@ export const ROLE_LABELS: Record<string, string> = {
   AGENT_SAISIE: 'Agent de saisie / garde',
   CHEF_EQUIPE: 'Chef d’équipe',
   CONSULTATION: 'Consultation',
+  DEPOSITAIRE: 'Dépositaire',
 }
 
 export const ROLE_COLORS: Record<string, string> = {
@@ -14,9 +15,10 @@ export const ROLE_COLORS: Record<string, string> = {
   AGENT_SAISIE: '#FF6B00',
   CHEF_EQUIPE: '#00A8E8',
   CONSULTATION: '#00D97E',
+  DEPOSITAIRE: '#8B5CF6',
 }
 
-export const ALL_ROLES = ['CHEF_CENTRE','ADJOINT_CHEF_CENTRE','ADMINISTRATIF','AGENT_SAISIE','CHEF_EQUIPE','CONSULTATION']
+export const ALL_ROLES = ['CHEF_CENTRE','ADJOINT_CHEF_CENTRE','ADMINISTRATIF','AGENT_SAISIE','CHEF_EQUIPE','CONSULTATION','DEPOSITAIRE']
 export const ADMIN_ROLES = ['CHEF_CENTRE','ADJOINT_CHEF_CENTRE']
 export const MOVEMENT_ROLES = ['CHEF_CENTRE','ADJOINT_CHEF_CENTRE','AGENT_SAISIE','CHEF_EQUIPE','CONSULTATION']
 export const AGENT_SAISIE_ROLES = ['CHEF_CENTRE','ADJOINT_CHEF_CENTRE','AGENT_SAISIE']
@@ -29,6 +31,7 @@ export function canValidateExit(role?: string) { return !!role && SORTIE_ROLES.i
 export function isAdmin(role?: string) { return !!role && ADMIN_ROLES.includes(role) }
 
 export function loginRedirect(role: string) {
+  if (role === 'DEPOSITAIRE') return '/suivi-camions'
   if (role === 'AGENT_SAISIE' || role === 'CHEF_EQUIPE') return '/mouvements-camions'
   if (role === 'CONSULTATION') return '/mouvements-camions'
   if (role === 'ADMINISTRATIF') return '/dashboard'

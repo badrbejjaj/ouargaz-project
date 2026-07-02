@@ -5,6 +5,7 @@ import { createToken } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
   try {
+    console.log("🚀 ~ POST ~ req:", req)
     const { username, password } = await req.json()
 
     if (!username || !password) {
@@ -12,6 +13,7 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await prisma.user.findUnique({ where: { username } })
+    console.log("🚀 ~ POST ~ user:", user)
 
     if (!user || !user.active) {
       return NextResponse.json({ error: 'Identifiant ou mot de passe incorrect' }, { status: 401 })

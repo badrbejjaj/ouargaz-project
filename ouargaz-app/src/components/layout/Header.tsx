@@ -17,6 +17,7 @@ const roleLabels: Record<string, string> = {
   CONSULTATION: 'Consultation',
   AGENT_SAISIE: 'Agent de saisie / garde',
   CHEF_EQUIPE: 'Chef d\'équipe',
+  DEPOSITAIRE: 'Dépositaire',
 }
 
 export default function Header({ user, onMenuToggle, sidebarMode = 'full' }: HeaderProps) {

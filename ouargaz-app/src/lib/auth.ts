@@ -63,6 +63,7 @@ export function getRoleLabel(role: string): string {
     AGENT_SAISIE: 'Agent de saisie / garde',
     CHEF_EQUIPE: 'Chef d’équipe',
     CONSULTATION: 'Consultation',
+    DEPOSITAIRE: 'Dépositaire',
   }
   return labels[role] || role
 }

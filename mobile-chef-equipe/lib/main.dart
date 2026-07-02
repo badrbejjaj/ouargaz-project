@@ -620,6 +620,51 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final unread = _notifs.where((n) => n['read'] == false).length;
+    final isDepositaire = (widget.user['role'] ?? '') == 'DEPOSITAIRE';
+
+    if (isDepositaire) {
+      return _buildDepositaireScaffold(unread);
+    }
+    return _buildChefEquipeScaffold(unread);
+  }
+
+  // ─── DEPOSITAIRE SCAFFOLD (2-tab: Suivi + Profil) ─────────────────────────
+  Widget _buildDepositaireScaffold(int unread) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _tab,
+        children: [
+          _buildDepositaireAccueil(unread),
+          _buildProfilTab(),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        backgroundColor: ThemeController.isDark.value ? kCard : const Color(0xFFF3F4F6),
+        selectedIndex: _tab,
+        onDestinationSelected: (i) => setState(() => _tab = i),
+        destinations: [
+          NavigationDestination(
+            icon: Stack(
+              children: [
+                const Icon(Icons.local_shipping_outlined),
+                if (unread > 0)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: kPrimary, shape: BoxShape.circle)),
+                  ),
+              ],
+            ),
+            label: 'Suivi',
+          ),
+          const NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profil'),
+        ],
+      ),
+    );
+  }
+
+  // ─── CHEF ÉQUIPE SCAFFOLD (5-tab: File, Internes, Prêts, Historique, KPI) ──
+  Widget _buildChefEquipeScaffold(int unread) {
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -629,7 +674,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const Expanded(child: Text('OUARGAZ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5))),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: kPrimary.withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
+              decoration: BoxDecoration(color: kPrimary.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
               child: const Text('Chef équipe', style: TextStyle(color: kPrimary, fontSize: 10, fontWeight: FontWeight.w700)),
             ),
           ],
@@ -667,12 +712,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await http.post(Uri.parse('${ApiService.baseUrl}/api/auth/logout'), headers: {'Cookie': ApiService._cookie ?? ''}).timeout(const Duration(seconds: 5)).catchError((_) => http.Response('', 200));
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.clear();
-              widget.onLogout();
-            },
+            onPressed: _logout,
           ),
         ],
       ),
@@ -1438,6 +1478,606 @@ class _HomeScreenState extends State<HomeScreen> {
       return '${hours}h ${mins}m';
     }
     return '${mins}m';
+  }
+
+  Future<void> _logout() async {
+    await http
+        .post(Uri.parse('${ApiService.baseUrl}/api/auth/logout'), headers: {'Cookie': ApiService._cookie ?? ''})
+        .timeout(const Duration(seconds: 5))
+        .catchError((_) => http.Response('', 200));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    widget.onLogout();
+  }
+
+  Widget _buildDepositaireAccueil(int unread) {
+    final isDark = ThemeController.isDark.value;
+    final activeTrucks = [..._fileAttente, ..._internes, ..._prets];
+
+    return Scaffold(
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: kPrimary,
+          onRefresh: _load,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ─── HEADER (LOGO / TITLE CENTERED) ─────────────────────────────────
+                Center(
+                  child: RichText(
+                    text: const TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'LPG ',
+                          style: TextStyle(
+                            color: Color(0xFF0066CC),
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'CONNECT',
+                          style: TextStyle(
+                            color: Color(0xFFFF8C00),
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                
+                // ─── TITLE & NOTIFICATIONS ──────────────────────────────────────────
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Mes Camions',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: isDark ? Colors.white : const Color(0xFF111827),
+                      ),
+                    ),
+                    Stack(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.notifications_none_outlined,
+                            color: isDark ? Colors.white : const Color(0xFF1F2937),
+                            size: 26,
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (ctx) => NotificationsPage(
+                                  notifications: _notifs,
+                                  onRefresh: _load,
+                                ),
+                              ),
+                            ).then((_) => _load());
+                          },
+                        ),
+                        if (unread > 0)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: kPrimary,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // ─── TRUCK LIST ─────────────────────────────────────────────────────
+                if (activeTrucks.isEmpty)
+                  Container(
+                    height: 300,
+                    alignment: Alignment.center,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.local_shipping_outlined,
+                          size: 64,
+                          color: kMuted.withOpacity(0.5),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Aucun camion en cours',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: kMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: activeTrucks.length,
+                    itemBuilder: (ctx, i) {
+                      final c = activeTrucks[i];
+                      return _buildDepositaireTruckCard(c);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDepositaireTruckCard(Map<String, dynamic> c) {
+    final isDark = ThemeController.isDark.value;
+    final String matricule = c['matricule'] ?? 'Inconnu';
+    final String statut = c['statut'] ?? 'EN_ATTENTE';
+    
+    // Map status label
+    String statusLabel = 'En attente';
+    if (statut == 'EN_COURS_TRAITEMENT') statusLabel = 'En cours';
+    if (statut == 'DEMARRAGE_EMPLISSAGE') statusLabel = 'Remplissage';
+    if (statut == 'PRET_A_SORTIR') statusLabel = 'Prêt à sortir';
+    if (statut == 'SORTI') statusLabel = 'Sorti';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isDark ? kCard : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? kBorder : const Color(0xFFE5E7EB)),
+        boxShadow: [
+          if (!isDark)
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: kPrimary.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.local_shipping, color: kPrimary, size: 22),
+        ),
+        title: Text(
+          'Camion $matricule',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : const Color(0xFF111827),
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4.0),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _getStatusColor(statut).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(
+                    color: _getStatusColor(statut),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        trailing: const Icon(Icons.chevron_right, color: kMuted),
+        onTap: () => _showDepositaireTruckDetail(c),
+      ),
+    );
+  }
+
+  void _showDepositaireTruckDetail(Map<String, dynamic> c) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = ThemeController.isDark.value;
+        final bg = isDark ? kCard : Colors.white;
+        final textStyle = TextStyle(color: isDark ? Colors.white : Colors.black87);
+        final String matricule = c['matricule'] ?? 'Inconnu';
+        final String statut = c['statut'] ?? 'EN_ATTENTE';
+        
+        // Map current status index
+        int activeIndex = 0;
+        if (statut == 'EN_ATTENTE') activeIndex = 2; // File d'attente
+        if (statut == 'EN_COURS_TRAITEMENT') activeIndex = 3; // Chargement
+        if (statut == 'DEMARRAGE_EMPLISSAGE' || statut == 'PRET_A_SORTIR') activeIndex = 4; // Fin Chargement
+        if (statut == 'SORTI') activeIndex = 5; // Sortie
+
+        return Container(
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: isDark ? kBorder : const Color(0xFFE5E7EB)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Pull handle
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white12 : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                // ─── TRUCK INFORMATION CARD ──────────────────────────────────────────
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0052D4), Color(0xFF4364F7)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF4364F7).withOpacity(0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Camion $matricule',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Icon(
+                                  Icons.circle_outlined,
+                                  color: Colors.white.withOpacity(0.7),
+                                  size: 12,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              'Statut actuel',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              statut == 'EN_ATTENTE'
+                                  ? 'En attente file'
+                                  : statut == 'EN_COURS_TRAITEMENT'
+                                      ? 'En cours traitement'
+                                      : statut == 'DEMARRAGE_EMPLISSAGE'
+                                          ? 'Emplissage'
+                                          : statut == 'PRET_A_SORTIR'
+                                              ? 'Prêt à sortir'
+                                              : 'Sorti',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Icon(
+                              Icons.location_on,
+                              color: Colors.white.withOpacity(0.9),
+                              size: 28,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          height: 90,
+                          alignment: Alignment.centerRight,
+                          child: Icon(
+                            Icons.local_shipping,
+                            color: Colors.white.withOpacity(0.9),
+                            size: 70,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // ─── ROUTE INFORMATION ──────────────────────────────────────────────
+                Text(
+                  'Départ de ZAGOURA',
+                  style: textStyle.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Destination : Centre Emplisseur',
+                  style: TextStyle(
+                    color: kMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // ─── TRIP PROGRESS (TIMELINE) ───────────────────────────────────────
+                Text(
+                  'Progression du trajet',
+                  style: textStyle.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                _buildTimelineItem(
+                  title: 'En route',
+                  isActive: activeIndex >= 0,
+                  isFirst: true,
+                  isLast: false,
+                ),
+                _buildTimelineItem(
+                  title: 'Arrivée Centre',
+                  isActive: activeIndex >= 1,
+                  isFirst: false,
+                  isLast: false,
+                ),
+                _buildTimelineItem(
+                  title: 'File d\'attente',
+                  isActive: activeIndex >= 2,
+                  isFirst: false,
+                  isLast: false,
+                ),
+                _buildTimelineItem(
+                  title: 'Chargement',
+                  isActive: activeIndex >= 3,
+                  isFirst: false,
+                  isLast: false,
+                ),
+                _buildTimelineItem(
+                  title: 'Fin Chargement',
+                  isActive: activeIndex >= 4,
+                  isFirst: false,
+                  isLast: false,
+                ),
+                _buildTimelineItem(
+                  title: 'Sortie',
+                  isActive: activeIndex >= 5,
+                  isFirst: false,
+                  isLast: true,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTimelineItem({
+    required String title,
+    required bool isActive,
+    required bool isFirst,
+    required bool isLast,
+  }) {
+    final isDark = ThemeController.isDark.value;
+    final color = isActive ? const Color(0xFF0066CC) : (isDark ? Colors.white24 : const Color(0xFFD1D5DB));
+    final textColor = isActive
+        ? const Color(0xFF0066CC)
+        : (isDark ? Colors.white60 : const Color(0xFF4B5563));
+
+    return IntrinsicHeight(
+      child: Row(
+        children: [
+          Column(
+            children: [
+              // Top line
+              Container(
+                width: 2.5,
+                height: 12,
+                color: isFirst ? Colors.transparent : color,
+              ),
+              // Circle indicator
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: color,
+                    width: 2.5,
+                  ),
+                  color: isActive ? const Color(0xFF0066CC) : Colors.transparent,
+                ),
+                child: isActive
+                    ? Center(
+                        child: Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+              // Bottom line
+              Expanded(
+                child: Container(
+                  width: 2.5,
+                  color: isLast ? Colors.transparent : color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                children: [
+                  if (isActive)
+                    const Text(
+                      '•  ',
+                      style: TextStyle(
+                        color: Color(0xFF0066CC),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+                      color: textColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfilTab() {
+    final isDark = ThemeController.isDark.value;
+    final textStyle = TextStyle(color: isDark ? Colors.white : Colors.black87);
+    final role = widget.user['role'] ?? 'DEPOSITAIRE';
+    final username = widget.user['username'] ?? 'Utilisateur';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const SizedBox(height: 20),
+          CircleAvatar(
+            radius: 50,
+            backgroundColor: kPrimary.withOpacity(0.15),
+            child: const Icon(Icons.person, size: 50, color: kPrimary),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            username.toUpperCase(),
+            style: textStyle.copyWith(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            role == 'DEPOSITAIRE' ? 'Dépositaire' : role,
+            style: const TextStyle(color: kMuted, fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 40),
+          Card(
+            color: isDark ? kCard : Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: isDark ? kBorder : const Color(0xFFE5E7EB)),
+            ),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.shield_outlined, color: kInfo),
+                  title: Text('Version de l\'application', style: textStyle.copyWith(fontSize: 14)),
+                  trailing: const Text('v6.6 PRO', style: TextStyle(color: kMuted, fontSize: 13, fontWeight: FontWeight.w500)),
+                ),
+                Divider(height: 1, thickness: 0.5, color: isDark ? kBorder : const Color(0xFFE5E7EB)),
+                ListTile(
+                  leading: const Icon(Icons.brightness_6_outlined, color: kWarning),
+                  title: Text('Mode Sombre', style: textStyle.copyWith(fontSize: 14)),
+                  trailing: Switch(
+                    value: isDark,
+                    activeColor: kPrimary,
+                    onChanged: (_) => ThemeController.toggle(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 30),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kPrimary.withOpacity(0.1),
+                foregroundColor: kPrimary,
+                elevation: 0,
+                side: BorderSide(color: kPrimary.withOpacity(0.4), width: 1),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _logout,
+              icon: const Icon(Icons.logout_rounded, size: 20),
+              label: const Text('Se déconnecter', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCamionDetails(Map<String, dynamic> c) {

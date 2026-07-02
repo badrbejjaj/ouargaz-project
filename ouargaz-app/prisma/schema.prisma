@@ -20,6 +20,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   auditLogs AuditLog[]
+  clientId  Int?
+  client    Client?  @relation(fields: [clientId], references: [id])
 }
 
 model Jaugeage {
@@ -140,6 +142,7 @@ model Client {
   marque    String
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
+  users     User[]
 }
 
 model Marque {

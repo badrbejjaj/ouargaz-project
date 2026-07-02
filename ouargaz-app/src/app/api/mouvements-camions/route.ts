@@ -27,8 +27,19 @@ async function notifyAll(title: string, message: string, link = '/mouvements-cam
     notify('CHEF_EQUIPE', title, message, link)
   ])
 }
+async function notifyDepositaireForClient(clientName: string, title: string, message: string) {
+  // Find DEPOSITAIRE user linked to this client by name
+  const clientRecord = await prisma.client.findFirst({ where: { name: clientName } })
+  if (!clientRecord) return
+  const depositors = await prisma.user.findMany({ where: { role: 'DEPOSITAIRE', clientId: clientRecord.id, active: true } })
+  // Notify via DEPOSITAIRE role channel — all depositors for this client receive it
+  if (depositors.length > 0) {
+    await notify('DEPOSITAIRE', title, message, '/suivi-camions')
+  }
+}
 
 export async function GET(req: NextRequest) {
+  const session = await getSessionFromRequest(req)
   const { searchParams } = new URL(req.url)
   const statut = searchParams.get('statut')
   const date = searchParams.get('date')
@@ -37,6 +48,19 @@ export async function GET(req: NextRequest) {
   if (statut && statut !== 'TOUS') where.statut = statut
   if (date) where.date = date
   if (!includeAll && !statut) where.statut = { notIn: [STATUTS.SORTI, STATUTS.ANNULE] }
+
+  if (session && session.role === 'DEPOSITAIRE') {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: session.id },
+      include: { client: true }
+    })
+    if (dbUser?.client) {
+      where.client = dbUser.client.name
+    } else {
+      return NextResponse.json({ camions: [] })
+    }
+  }
+
   const camions = await prisma.camionDepositaire.findMany({ where, orderBy: [{ arriveeAt: 'asc' }, { id: 'asc' }] })
   return NextResponse.json({ camions })
 }
@@ -73,6 +97,7 @@ export async function PUT(req: NextRequest) {
   const body = await req.json()
   const id = Number(body.id)
   const camion = await prisma.camionDepositaire.findUnique({ where: { id } })
+  console.log("🚀 ~ PUT ~ camion:", camion)
   if (!camion) return NextResponse.json({ error: 'Camion introuvable' }, { status: 404 })
   const action = s(body.action)
 
@@ -104,6 +129,7 @@ export async function PUT(req: NextRequest) {
     const updated = await prisma.camionDepositaire.update({ where: { id }, data: { statut: STATUTS.ANNULE, motif_annulation: motif } })
     await log(id, 'ANNULATION_FILE_ATTENTE', session, camion.statut, STATUTS.ANNULE, motif, camion, updated)
     await notifyAll('Camion annulé', `Le camion ${camion.matricule} de ${camion.client} a été annulé. Motif: ${motif}`)
+    await notifyDepositaireForClient(camion.client, '❌ Camion annulé', `Votre camion ${camion.matricule} a été annulé. Motif: ${motif}`)
     await triggerBroadcast('CAMION_UPDATE')
     return NextResponse.json({ camion: updated })
   }
@@ -113,6 +139,7 @@ export async function PUT(req: NextRequest) {
     if (camion.statut !== STATUTS.EN_ATTENTE) return NextResponse.json({ error: 'Camion non disponible en file d’attente' }, { status: 400 })
     const updated = await prisma.camionDepositaire.update({ where: { id }, data: { statut: STATUTS.EN_COURS_TRAITEMENT, entreeAt: new Date(), enteredBy: session.username } })
     await notifyAll('Camion entré au centre', `Le camion ${camion.matricule} de ${camion.client} est entré au centre.`)
+    await notifyDepositaireForClient(camion.client, '📍 Camion entré au centre', `Votre camion ${camion.matricule} est entré au centre de remplissage.`)
     await log(id, 'ENTREE_CENTRE', session, camion.statut, STATUTS.EN_COURS_TRAITEMENT, 'Camion entré au centre')
     await triggerBroadcast('CAMION_UPDATE')
     return NextResponse.json({ camion: updated })
@@ -140,6 +167,7 @@ export async function PUT(req: NextRequest) {
     if (camion.statut !== STATUTS.EN_COURS_TRAITEMENT) return NextResponse.json({ error: 'Le camion doit être en cours de traitement' }, { status: 400 })
     const updated = await prisma.camionDepositaire.update({ where: { id }, data: { statut: STATUTS.DEMARRAGE_EMPLISSAGE, debutEmplissageAt: new Date(), processedBy: session.username, def_traitees_12kg: camion.def_rendues_12kg, def_traitees_6kg: camion.def_rendues_6kg, def_traitees_3kg: camion.def_rendues_3kg } })
     await notifyAll('Remplissage démarré', `Le remplissage a commencé pour le camion ${camion.matricule} de ${camion.client}.`)
+    await notifyDepositaireForClient(camion.client, '⚙️ Remplissage démarré', `Le remplissage de votre camion ${camion.matricule} a commencé.`)
     await log(id, 'DEMARRAGE_CHARGEMENT', session, camion.statut, STATUTS.DEMARRAGE_EMPLISSAGE, 'Démarrage chargement après validation des vides/défectueuses/étrangères')
     await triggerBroadcast('CAMION_UPDATE')
     return NextResponse.json({ camion: updated })
@@ -162,6 +190,7 @@ export async function PUT(req: NextRequest) {
     }
     const updated = await prisma.camionDepositaire.update({ where: { id }, data })
     await notifyAll('Camion prêt à sortir', `Le camion ${camion.matricule} de ${camion.client} est prêt à sortir.`)
+    await notifyDepositaireForClient(camion.client, '✅ Camion prêt à sortir', `Votre camion ${camion.matricule} est chargé et prêt à sortir du centre.`)
     await log(id, 'CHARGEMENT_TERMINE', session, camion.statut, STATUTS.PRET_A_SORTIR, 'Chargement terminé V6.4 : pleines + défectueuses refusées + étrangères', camion, updated)
     await triggerBroadcast('CAMION_UPDATE')
     return NextResponse.json({ camion: updated })
@@ -184,6 +213,7 @@ export async function PUT(req: NextRequest) {
     }
     const updated = await prisma.camionDepositaire.update({ where: { id }, data })
     await notifyAll('Camion sorti', `Le camion ${camion.matricule} de ${camion.client} est sorti (BL: ${numero_bl_sortie}).`)
+    await notifyDepositaireForClient(camion.client, '🚛 Camion sorti', `Votre camion ${camion.matricule} est sorti du centre (BL: ${numero_bl_sortie}).`)
     await log(id, 'SORTIE_CENTRE', session, camion.statut, STATUTS.SORTI, `Sortie validée avec BL ${numero_bl_sortie}`, camion, updated)
     await triggerBroadcast('CAMION_UPDATE')
     return NextResponse.json({ camion: updated })
