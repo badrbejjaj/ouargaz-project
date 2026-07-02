@@ -265,6 +265,18 @@ class ApiService {
     return [];
   }
 
+  static Future<bool> markNotificationRead(int? id) async {
+    try {
+      final url = id != null ? '$baseUrl/api/notifications?id=$id' : '$baseUrl/api/notifications';
+      final resp = await http.patch(
+        Uri.parse(url),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 5));
+      return resp.statusCode == 200;
+    } catch (_) {}
+    return false;
+  }
+
   static Future<Map<String, dynamic>?> getStats(String date) async {
     try {
       final resp = await http.get(
@@ -567,6 +579,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0;
+  String _kpiPeriod = 'day';
   List<Map<String, dynamic>> _fileAttente = [];
   List<Map<String, dynamic>> _internes = [];
   List<Map<String, dynamic>> _prets = [];
@@ -625,7 +638,20 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(icon: const Icon(Icons.brightness_6_outlined), onPressed: ThemeController.toggle),
           Stack(
             children: [
-              IconButton(icon: const Icon(Icons.notifications_outlined), onPressed: () => setState(() => _tab = 4)),
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (ctx) => NotificationsPage(
+                        notifications: _notifs,
+                        onRefresh: _load,
+                      ),
+                    ),
+                  ).then((_) => _load());
+                },
+              ),
               if (unread > 0)
                 Positioned(
                   top: 6,
@@ -657,8 +683,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildInternes(),
           _buildPrets(),
           _buildHistorique(),
-          _buildNotifs(),
-          if (_stats != null) _buildKpi(),
+          _stats != null ? _buildKpi() : const Center(child: CircularProgressIndicator(color: kPrimary)),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -686,15 +711,6 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Prêts',
           ),
           const NavigationDestination(icon: Icon(Icons.history), label: 'Historique'),
-          NavigationDestination(
-            icon: Stack(
-              children: [
-                const Icon(Icons.notifications_outlined),
-                if (unread > 0) Positioned(top: 0, right: 0, child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: kPrimary, shape: BoxShape.circle))),
-              ],
-            ),
-            label: 'Notifs',
-          ),
           const NavigationDestination(icon: Icon(Icons.analytics_outlined), label: 'KPI'),
         ],
       ),
@@ -825,63 +841,603 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildNotifs() => RefreshIndicator(
-    color: kPrimary,
-    onRefresh: _load,
-    child: _notifs.isEmpty
-        ? const Center(child: Text('Aucune notification', style: TextStyle(color: kMuted)))
-        : ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: _notifs.length,
-            itemBuilder: (ctx, i) {
-              final n = _notifs[i];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                color: (n['read'] == true) ? kCard : kPrimary.withOpacity(0.08),
-                child: ListTile(
-                  leading: Icon((n['read'] == true) ? Icons.notifications_outlined : Icons.notifications_active, color: (n['read'] == true) ? kMuted : kPrimary),
-                  title: Text(n['title'] ?? '', style: TextStyle(fontWeight: (n['read'] == true) ? FontWeight.w600 : FontWeight.w800)),
-                  subtitle: Text(n['message'] ?? '', style: const TextStyle(color: kMuted, fontSize: 12)),
-                ),
-              );
-            },
-          ),
-  );
+
 
   Widget _buildKpi() {
-    final day = _stats!['day'] ?? {};
-    final counts = _stats!['dayCounts'] ?? {};
+    if (_stats == null) {
+      return const Center(child: CircularProgressIndicator(color: kPrimary));
+    }
+
+    final isDark = ThemeController.isDark.value;
+    final counts = (_kpiPeriod == 'day' ? _stats!['dayCounts'] : _stats!['monthCounts']) ?? {};
+    final data = (_kpiPeriod == 'day' ? _stats!['day'] : _stats!['month']) ?? {};
+
+    final double tonnage = (data['tonnageSortiTotal'] is num) ? data['tonnageSortiTotal'].toDouble() : 0.0;
+    final int entrees = (data['entreesTotal'] is num) ? data['entreesTotal'].toInt() : 0;
+    final int sorties = (data['sortiesTotal'] is num) ? data['sortiesTotal'].toInt() : 0;
+    final int ecart = (data['ecartBouteilles'] is num) ? data['ecartBouteilles'].toInt() : 0;
+
+    final double tauxGlobal = (data['tauxGlobal'] is num) ? data['tauxGlobal'].toDouble() * 100 : 0.0;
+
+    final textStyle = TextStyle(color: isDark ? Colors.white : Colors.black87);
+    final cardBg = isDark ? kCard : Colors.white;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(12),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Camions', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          _buildPeriodSelector(),
+          
+          // ─── TONNAGE CARD ──────────────────────────────────────────────────────────
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [kPrimary, Color(0xFFF35B5B)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: kPrimary.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Tonnage Sorti Total',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Icon(Icons.scale_rounded, color: Colors.white.withOpacity(0.8), size: 20),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '${tonnage.toStringAsFixed(2)} T',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _kpiPeriod == 'day' ? "Aujourd'hui" : "Mois en cours",
+                  style: const TextStyle(
+                    color: Colors.white60,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // ─── CAMIONS GRID ──────────────────────────────────────────────────────────
+          Text(
+            'Mouvements Camions',
+            style: textStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 1.45,
             children: [
-              _kpiCard('Arrivés', counts['arrives'] ?? 0, kPrimary),
-              _kpiCard('Internes', counts['internes'] ?? 0, kInfo),
-              _kpiCard('Prêts', counts['prets'] ?? 0, kSuccess),
-              _kpiCard('Sortis', counts['sortis'] ?? 0, kSuccess),
+              _kpiGridCard(
+                title: 'Arrivés',
+                value: '${counts['arrives'] ?? 0}',
+                icon: Icons.login_rounded,
+                color: kInfo,
+              ),
+              _kpiGridCard(
+                title: 'Internes',
+                value: '${counts['internes'] ?? 0}',
+                icon: Icons.local_shipping_outlined,
+                color: kWarning,
+              ),
+              _kpiGridCard(
+                title: 'Prêts à sortir',
+                value: '${counts['prets'] ?? 0}',
+                icon: Icons.check_circle_outline,
+                color: kSuccess,
+              ),
+              _kpiGridCard(
+                title: 'Sortis',
+                value: '${counts['sortis'] ?? 0}',
+                icon: Icons.logout_rounded,
+                color: const Color(0xFF8B5CF6),
+              ),
             ],
           ),
           const SizedBox(height: 20),
-          const Text('Bouteilles', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _kpiCard('Entrées', day['entreesTotal'] ?? 0, kInfo),
-              _kpiCard('Sorties', day['sortiesTotal'] ?? 0, kSuccess),
-            ],
+
+          // ─── BOUTEILLES SECTION ──────────────────────────────────────────────────
+          Text(
+            'Flux Bouteilles',
+            style: textStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? kBorder : const Color(0xFFE5E7EB)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _flowTile(
+                      label: 'Entrées (Vides)',
+                      value: '$entrees',
+                      color: kInfo,
+                      icon: Icons.arrow_downward_rounded,
+                    ),
+                    Container(
+                      height: 40,
+                      width: 1,
+                      color: isDark ? kBorder : const Color(0xFFE5E7EB),
+                    ),
+                    _flowTile(
+                      label: 'Sorties (Pleines)',
+                      value: '$sorties',
+                      color: kSuccess,
+                      icon: Icons.arrow_upward_rounded,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: ecart >= 0 ? kSuccess.withOpacity(0.06) : kPrimary.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: ecart >= 0 ? kSuccess.withOpacity(0.2) : kPrimary.withOpacity(0.2),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Écart Entrée/Sortie',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kMuted),
+                      ),
+                      Text(
+                        ecart >= 0 ? '+$ecart' : '$ecart',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: ecart >= 0 ? kSuccess : kPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // ─── REPLACEMENT RATE & DEFECTIVE TABS ───────────────────────────────────
+          Text(
+            'Performance Remplacement',
+            style: textStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? kBorder : const Color(0xFFE5E7EB)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Taux de Remplacement',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: kSuccess.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${tauxGlobal.toStringAsFixed(1)}%',
+                        style: const TextStyle(color: kSuccess, fontSize: 13, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: (tauxGlobal / 100).clamp(0.0, 1.0),
+                    backgroundColor: isDark ? const Color(0xFF1E2A3A) : const Color(0xFFF3F4F6),
+                    color: kSuccess,
+                    minHeight: 8,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _defectiveRow(
+                  label: 'Bouteilles 12 kg',
+                  rendues: data['rendues12'] ?? 0,
+                  remplacees: data['remp12'] ?? 0,
+                  refusees: data['refus12'] ?? 0,
+                ),
+                const Divider(height: 16, thickness: 0.5),
+                _defectiveRow(
+                  label: 'Bouteilles 6 kg',
+                  rendues: data['rendues6'] ?? 0,
+                  remplacees: data['remp6'] ?? 0,
+                  refusees: data['refus6'] ?? 0,
+                ),
+                const Divider(height: 16, thickness: 0.5),
+                _defectiveRow(
+                  label: 'Bouteilles 3 kg',
+                  rendues: data['rendues3'] ?? 0,
+                  remplacees: data['remp3'] ?? 0,
+                  refusees: data['refus3'] ?? 0,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // ─── DURATIONS SECTION ───────────────────────────────────────────────────
+          Text(
+            'Durées Moyennes de Transit',
+            style: textStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? kBorder : const Color(0xFFE5E7EB)),
+            ),
+            child: Column(
+              children: [
+                _durationTile(
+                  title: 'Temps d’attente moyen',
+                  desc: 'Arrivée ➔ Entrée centre',
+                  value: _formatHours(data['tempsAttenteH']),
+                  icon: Icons.hourglass_top_rounded,
+                  color: kWarning,
+                ),
+                const Divider(height: 20, thickness: 0.5),
+                _durationTile(
+                  title: 'Temps de traitement moyen',
+                  desc: 'Entrée centre ➔ Fin chargement',
+                  value: _formatHours(data['tempsTraitementH']),
+                  icon: Icons.bolt_rounded,
+                  color: kInfo,
+                ),
+                const Divider(height: 20, thickness: 0.5),
+                _durationTile(
+                  title: 'Temps de séjour total moyen',
+                  desc: 'Arrivée ➔ Sortie centre',
+                  value: _formatHours(data['tempsSejourH']),
+                  icon: Icons.schedule_rounded,
+                  color: kSuccess,
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildPeriodSelector() {
+    final isDark = ThemeController.isDark.value;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2A3A) : const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? kBorder : const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _kpiPeriod = 'day'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: _kpiPeriod == 'day' ? kPrimary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    "Aujourd'hui",
+                    style: TextStyle(
+                      color: _kpiPeriod == 'day' ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _kpiPeriod = 'month'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: _kpiPeriod == 'month' ? kPrimary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    "Ce Mois",
+                    style: TextStyle(
+                      color: _kpiPeriod == 'month' ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _kpiGridCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    final isDark = ThemeController.isDark.value;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? kCard : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? kBorder : const Color(0xFFE5E7EB)),
+        boxShadow: [
+          if (!isDark)
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color, size: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: kMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _flowTile({
+    required String label,
+    required String value,
+    required Color color,
+    required IconData icon,
+  }) {
+    final isDark = ThemeController.isDark.value;
+    return Expanded(
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: kMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _defectiveRow({
+    required String label,
+    required dynamic rendues,
+    required dynamic remplacees,
+    required dynamic refusees,
+  }) {
+    final isDark = ThemeController.isDark.value;
+    final labelStyle = const TextStyle(fontSize: 12, fontWeight: FontWeight.bold);
+    final countStyle = TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      color: isDark ? Colors.white70 : Colors.black87,
+    );
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          flex: 2,
+          child: Text(label, style: labelStyle),
+        ),
+        Expanded(
+          child: Column(
+            children: [
+              const Text('Rendues', style: TextStyle(fontSize: 9, color: kMuted, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text('$rendues', style: countStyle),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Column(
+            children: [
+              const Text('Rempl.', style: TextStyle(fontSize: 9, color: kSuccess, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text('$remplacees', style: countStyle.copyWith(color: kSuccess)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Column(
+            children: [
+              const Text('Refus.', style: TextStyle(fontSize: 9, color: kPrimary, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text('$refusees', style: countStyle.copyWith(color: kPrimary)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _durationTile({
+    required String title,
+    required String desc,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    final isDark = ThemeController.isDark.value;
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: color, size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                desc,
+                style: const TextStyle(fontSize: 10, color: kMuted, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatHours(dynamic hrs) {
+    if (hrs == null) return '0m';
+    final double h = (hrs is num) ? hrs.toDouble() : double.tryParse(hrs.toString()) ?? 0.0;
+    if (h <= 0) return '0m';
+    final totalMinutes = (h * 60).round();
+    final mins = totalMinutes % 60;
+    final hours = totalMinutes ~/ 60;
+    if (hours > 0) {
+      return '${hours}h ${mins}m';
+    }
+    return '${mins}m';
   }
 
   void _showCamionDetails(Map<String, dynamic> c) {
@@ -1126,9 +1682,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final tr6 = c['def_traitees_6kg'] ?? c['def_rendues_6kg'] ?? 0;
     final tr3 = c['def_traitees_3kg'] ?? c['def_rendues_3kg'] ?? 0;
 
-    final p12 = TextEditingController(text: '${c['charge_12kg'] != 0 ? c['charge_12kg'] : tr12}');
-    final p6 = TextEditingController(text: '${c['charge_6kg'] != 0 ? c['charge_6kg'] : tr6}');
-    final p3 = TextEditingController(text: '${c['charge_3kg'] != 0 ? c['charge_3kg'] : tr3}');
+    final p12 = TextEditingController(text: '${c['charge_12kg'] != 0 ? c['charge_12kg'] : (c['terrain_vides_12kg'] ?? c['vides_12kg'] ?? 0)}');
+    final p6 = TextEditingController(text: '${c['charge_6kg'] != 0 ? c['charge_6kg'] : (c['terrain_vides_6kg'] ?? c['vides_6kg'] ?? 0)}');
+    final p3 = TextEditingController(text: '${c['charge_3kg'] != 0 ? c['charge_3kg'] : (c['terrain_vides_3kg'] ?? c['vides_3kg'] ?? 0)}');
 
     final acc12 = TextEditingController(text: '${c['def_acceptees_12kg'] != 0 ? c['def_acceptees_12kg'] : tr12}');
     final acc6 = TextEditingController(text: '${c['def_acceptees_6kg'] != 0 ? c['def_acceptees_6kg'] : tr6}');
@@ -1252,11 +1808,11 @@ class _HomeScreenState extends State<HomeScreen> {
                               const SizedBox(height: 8),
                               Row(
                                 children: [
-                                  Expanded(child: _buildNumberField(p12, '12 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: tr12)),
+                                  Expanded(child: _buildNumberField(p12, '12 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: (c['terrain_vides_12kg'] ?? c['vides_12kg'] ?? 0) + tr12)),
                                   const SizedBox(width: 8),
-                                  Expanded(child: _buildNumberField(p6, '6 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: tr6)),
+                                  Expanded(child: _buildNumberField(p6, '6 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: (c['terrain_vides_6kg'] ?? c['vides_6kg'] ?? 0) + tr6)),
                                   const SizedBox(width: 8),
-                                  Expanded(child: _buildNumberField(p3, '3 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: tr3)),
+                                  Expanded(child: _buildNumberField(p3, '3 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: (c['terrain_vides_3kg'] ?? c['vides_3kg'] ?? 0) + tr3)),
                                 ],
                               ),
                             ],
@@ -1277,17 +1833,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               Text('Acceptées & Refusées', style: titleStyle.copyWith(fontSize: 13, color: kSuccess)),
                               const SizedBox(height: 12),
-                              Text('Acceptées (Remplacées)', style: textStyle.copyWith(fontSize: 11, color: kMuted, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(child: _buildNumberField(acc12, '12 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: tr12)),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: _buildNumberField(acc6, '6 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: tr6)),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: _buildNumberField(acc3, '3 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: tr3)),
-                                ],
-                              ),
                               const SizedBox(height: 14),
                               Text('Refusées (Calculé)', style: textStyle.copyWith(fontSize: 11, color: kMuted, fontWeight: FontWeight.w600)),
                               const SizedBox(height: 6),
@@ -1298,6 +1843,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Expanded(child: _buildRecapTile('6 kg', ref6, isDark, color: kPrimary)),
                                   const SizedBox(width: 8),
                                   Expanded(child: _buildRecapTile('3 kg', ref3, isDark, color: kPrimary)),
+                                ],
+                              ),
+                              Text('Acceptées (Remplacées)', style: textStyle.copyWith(fontSize: 11, color: kMuted, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(child: _buildNumberField(acc12, '12 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: tr12)),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: _buildNumberField(acc6, '6 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: tr6)),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: _buildNumberField(acc3, '3 kg', isDark, onChanged: () => setModalState(() => isSaveDisabled = false), maxValue: tr3)),
                                 ],
                               ),
                             ],
@@ -1456,6 +2012,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                             isSaveDisabled = true;
                                           });
                                           final data = {
+                                            'terrain_vides_12kg': int.tryParse(v12.text) ?? 0,
+                                            'terrain_vides_6kg': int.tryParse(v6.text) ?? 0,
+                                            'terrain_vides_3kg': int.tryParse(v3.text) ?? 0,
+                                            'def_rendues_12kg': int.tryParse(d12.text) ?? 0,
+                                            'def_rendues_6kg': int.tryParse(d6.text) ?? 0,
+                                            'def_rendues_3kg': int.tryParse(d3.text) ?? 0,
                                             'terrain_etr_12kg': int.tryParse(etr12.text) ?? 0,
                                             'terrain_etr_6kg': int.tryParse(etr6.text) ?? 0,
                                             'terrain_etr_3kg': int.tryParse(etr3.text) ?? 0,
@@ -1686,13 +2248,300 @@ class _HomeScreenState extends State<HomeScreen> {
     decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.3))),
     child: Column(children: [Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)), Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w800))]),
   );
+}
 
-  Widget _kpiCard(String label, dynamic value, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.3))),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)), const SizedBox(height: 4), Text('$value', style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.w800))],
-    ),
-  );
+class NotificationsPage extends StatefulWidget {
+  final List<Map<String, dynamic>> notifications;
+  final Future<void> Function() onRefresh;
+
+  const NotificationsPage({
+    Key? key,
+    required this.notifications,
+    required this.onRefresh,
+  }) : super(key: key);
+
+  @override
+  State<NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends State<NotificationsPage> {
+  late List<Map<String, dynamic>> _notifs;
+
+  @override
+  void initState() {
+    super.initState();
+    _notifs = List.from(widget.notifications);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _markAllAsReadSilently();
+    });
+  }
+
+  Future<void> _markAllAsReadSilently() async {
+    final hasUnread = _notifs.any((n) => n['read'] == false);
+    if (!hasUnread) return;
+
+    final success = await ApiService.markNotificationRead(null);
+    if (success) {
+      if (mounted) {
+        setState(() {
+          _notifs = _notifs.map((n) => {...n, 'read': true}).toList();
+        });
+      }
+      widget.onRefresh();
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    await widget.onRefresh();
+    final updated = await ApiService.getNotifications();
+    if (mounted) {
+      setState(() {
+        _notifs = updated;
+      });
+    }
+  }
+
+  Future<void> _markAsRead(int? id) async {
+    if (id == null) return;
+    final success = await ApiService.markNotificationRead(id);
+    if (success) {
+      if (mounted) {
+        setState(() {
+          _notifs = _notifs.map((n) {
+            if (n['id'] == id) {
+              return {...n, 'read': true};
+            }
+            return n;
+          }).toList();
+        });
+      }
+      widget.onRefresh();
+    }
+  }
+
+  Future<void> _markAllAsRead() async {
+    final success = await ApiService.markNotificationRead(null);
+    if (success) {
+      if (mounted) {
+        setState(() {
+          _notifs = _notifs.map((n) => {...n, 'read': true}).toList();
+        });
+      }
+      widget.onRefresh();
+    }
+  }
+
+  String _formatDate(String? dateStr) {
+    if (dateStr == null) return '';
+    final dt = DateTime.tryParse(dateStr);
+    if (dt == null) return '';
+    final now = DateTime.now();
+    final localDt = dt.toLocal();
+    if (localDt.year == now.year && localDt.month == now.month && localDt.day == now.day) {
+      return "Aujourd'hui à ${DateFormat('HH:mm').format(localDt)}";
+    } else if (localDt.year == now.year && localDt.month == now.month && localDt.day == now.day - 1) {
+      return "Hier à ${DateFormat('HH:mm').format(localDt)}";
+    } else {
+      final day = localDt.day.toString().padLeft(2, '0');
+      final month = localDt.month.toString().padLeft(2, '0');
+      final year = localDt.year;
+      final time = DateFormat('HH:mm').format(localDt);
+      return "$day/$month/$year $time";
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = ThemeController.isDark.value;
+    final hasUnread = _notifs.any((n) => n['read'] == false);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Notifications', style: TextStyle(fontWeight: FontWeight.w900)),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          if (hasUnread)
+            IconButton(
+              tooltip: 'Tout marquer comme lu',
+              icon: const Icon(Icons.done_all, color: kSuccess),
+              onPressed: _markAllAsRead,
+            ),
+        ],
+      ),
+      body: RefreshIndicator(
+        color: kPrimary,
+        onRefresh: _handleRefresh,
+        child: _notifs.isEmpty
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: kPrimary.withOpacity(0.05),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.notifications_none_outlined,
+                          size: 64,
+                          color: kMuted.withOpacity(0.5),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Aucune notification',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : const Color(0xFF111827),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Vous recevrez des alertes en temps réel sur les mouvements des camions.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: kMuted,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                itemCount: _notifs.length,
+                itemBuilder: (ctx, i) {
+                  final n = _notifs[i];
+                  final isUnread = n['read'] != true;
+
+                  // Dynamic theme colors
+                  final cardBg = isDark
+                      ? (isUnread ? kCard : kCard.withOpacity(0.5))
+                      : (isUnread ? kPrimary.withOpacity(0.04) : const Color(0xFFF9FAFB));
+                  final cardBorder = isDark
+                      ? (isUnread ? kPrimary.withOpacity(0.2) : kBorder)
+                      : (isUnread ? kPrimary.withOpacity(0.3) : const Color(0xFFE5E7EB));
+                  final titleColor = isDark
+                      ? (isUnread ? Colors.white : Colors.white.withOpacity(0.6))
+                      : (isUnread ? const Color(0xFF111827) : const Color(0xFF4B5563));
+                  final msgColor = isDark
+                      ? (isUnread ? Colors.white.withOpacity(0.85) : kMuted)
+                      : (isUnread ? const Color(0xFF374151) : const Color(0xFF6B7280));
+                  final timeColor = isDark
+                      ? kMuted.withOpacity(0.8)
+                      : const Color(0xFF9CA3AF);
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: cardBorder,
+                        width: 1,
+                      ),
+                    ),
+                    color: cardBg,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Container(
+                              width: 5,
+                              color: isUnread ? kPrimary : Colors.transparent,
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(
+                                          isUnread ? Icons.notifications_active : Icons.notifications_none_outlined,
+                                          color: isUnread ? kPrimary : kMuted,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                n['title'] ?? '',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: isUnread ? FontWeight.w800 : FontWeight.w600,
+                                                  color: titleColor,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                n['message'] ?? '',
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  color: msgColor,
+                                                  height: 1.3,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (isUnread)
+                                          IconButton(
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                            icon: const Icon(Icons.close, size: 18, color: kMuted),
+                                            tooltip: 'Marquer comme lu',
+                                            onPressed: () => _markAsRead(n['id'] as int?),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        Icon(
+                                          Icons.access_time,
+                                          size: 12,
+                                          color: timeColor,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          _formatDate(n['createdAt'] as String?),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: timeColor,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+    );
+  }
 }

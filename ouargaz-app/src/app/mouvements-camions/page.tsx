@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNotifications } from '@/context/NotificationContext'
 import { STATUT_LABELS, casiers12, casiers6, casiers3, fmt } from '@/lib/camions'
 import { canManageQueue, canProcessInternal, canValidateExit } from '@/lib/roles'
 
@@ -80,7 +81,7 @@ export default function MouvementsCamionsPage(){
   const [stats,setStats]=useState<any>(null)
   const [date,setDate]=useState(new Date().toISOString().slice(0,10))
   const [user,setUser]=useState<User|null>(null)
-  const [notifications,setNotifications]=useState<any[]>([])
+  const { notifications, unreadCount, markRead } = useNotifications()
   const [showNotif,setShowNotif]=useState(false)
   const [newInternes,setNewInternes]=useState(false)
   const [newPrets,setNewPrets]=useState(false)
@@ -91,7 +92,7 @@ export default function MouvementsCamionsPage(){
   const canProcess=canProcessInternal(user?.role)
   const canExit=canValidateExit(user?.role)
   const isChefEquipe = user?.role === 'CHEF_EQUIPE'
-  const unread = notifications.filter(n=>!n.read).length
+  const unread = unreadCount
 
   const load = useCallback(async () => {
     const q = tab==='historique' ? `all=1&date=${date}` : tab==='kpi' ? `all=1&date=${date}` : tab==='internes' ? `statut=TOUS` : `statut=${tab==='attente'?'EN_ATTENTE':tab==='sortie'?'PRET_A_SORTIR':'TOUS'}`
@@ -107,8 +108,6 @@ export default function MouvementsCamionsPage(){
     setPrevPretsCount(prev => { if(currentPrets > prev) setNewPrets(true); return currentPrets })
     const s=await fetch(`/api/mouvements-camions/stats?date=${date}`).catch(()=>null)
     if(s?.ok) setStats(await s.json())
-    const nf=await fetch('/api/notifications').then(r=>r.json()).catch(()=>({notifications:[],unread:0}))
-    setNotifications(nf.notifications||[])
   }, [tab, date])
 
   useEffect(()=>{
@@ -116,18 +115,31 @@ export default function MouvementsCamionsPage(){
     fetch('/api/referentiels').then(r=>r.json()).then(j=>setClients(j.clients||[])).catch(()=>{})
   },[])
 
-  useEffect(()=>{
+  useEffect(() => {
     load()
-    const t=setInterval(load, 3000)
-    return ()=>clearInterval(t)
-  },[load])
 
-  async function markNotifRead(id?:number){
-    const body = id ? { id } : {}
-    await fetch('/api/notifications',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>{})
-    setNotifications(ns=>id ? ns.map(n=>n.id===id?{...n,read:true}:n) : ns.map(n=>({...n,read:true})))
-  }
-  async function markAllRead(){ await markNotifRead(); }
+    const handleCamionUpdate = () => {
+      load()
+    }
+    const handleNotifUpdate = (e: Event) => {
+      load()
+      const detail = (e as CustomEvent).detail
+      if (detail && detail.title) {
+        setMsg(`🔔 ${detail.title}: ${detail.message}`)
+      }
+    }
+
+    window.addEventListener('ouargaz-camions-updated', handleCamionUpdate)
+    window.addEventListener('ouargaz-notifications-updated', handleNotifUpdate)
+
+    return () => {
+      window.removeEventListener('ouargaz-camions-updated', handleCamionUpdate)
+      window.removeEventListener('ouargaz-notifications-updated', handleNotifUpdate)
+    }
+  }, [load])
+
+  const markNotifRead = markRead
+  const markAllRead = () => markRead()
 
   function chooseClient(name:string){ const c=clients.find(x=>x.name===name); setForm((f:any)=>({...f, client:name, marque:c?.marque||f.marque})) }
 

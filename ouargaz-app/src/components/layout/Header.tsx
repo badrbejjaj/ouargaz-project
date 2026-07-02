@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useNotifications } from '@/context/NotificationContext'
 
 interface HeaderProps {
   user: { username: string; role: string; name: string }
@@ -22,10 +23,14 @@ export default function Header({ user, onMenuToggle, sidebarMode = 'full' }: Hea
   const router = useRouter()
   const [dark, setDark] = useState(true)
   const [date, setDate] = useState('')
-  const [notifications, setNotifications] = useState<any[]>([])
+  const { notifications, unreadCount, markRead, initSession } = useNotifications()
   const [showNotif, setShowNotif] = useState(false)
 
-  const loadNotif = () => fetch('/api/notifications').then(r => r.json()).then(d => setNotifications(d.notifications || [])).catch(() => {})
+  useEffect(() => {
+    if (user) {
+      initSession(user)
+    }
+  }, [user, initSession])
 
   useEffect(() => {
     const saved = localStorage.getItem('theme')
@@ -37,16 +42,11 @@ export default function Header({ user, onMenuToggle, sidebarMode = 'full' }: Hea
     }
     update()
     const timer = setInterval(update, 60000)
-    loadNotif()
-    const notifTimer = setInterval(loadNotif, 3000)
-    return () => { clearInterval(timer); clearInterval(notifTimer) }
-  }, [])
 
-  const markRead = async (id?: number) => {
-    const body = id ? { id } : {}
-    await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {})
-    setNotifications(ns => id ? ns.map(n => n.id === id ? { ...n, read: true } : n) : ns.map(n => ({ ...n, read: true })))
-  }
+    return () => {
+      clearInterval(timer)
+    }
+  }, [])
 
   const toggleTheme = () => {
     const next = !dark
@@ -59,11 +59,12 @@ export default function Header({ user, onMenuToggle, sidebarMode = 'full' }: Hea
 
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
+    initSession(null)
     router.push('/login')
     router.refresh()
   }
 
-  const unread = notifications.filter(n => !n.read).length
+  const unread = unreadCount
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between px-6 py-3 border-b"

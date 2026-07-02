@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionFromRequest } from '@/lib/auth'
+import { triggerBroadcast } from '@/lib/broadcast'
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req)
@@ -22,6 +23,7 @@ export async function PATCH(req: NextRequest) {
   } else {
     await prisma.notification.updateMany({ where: { role: session.role, read: false }, data: { read: true } })
   }
+  await triggerBroadcast('NOTIFICATION_UPDATE', null, session.role)
   return NextResponse.json({ ok: true })
 }
 
@@ -30,5 +32,6 @@ export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req)
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   await prisma.notification.updateMany({ where: { role: session.role, read: false }, data: { read: true } })
+  await triggerBroadcast('NOTIFICATION_UPDATE', null, session.role)
   return NextResponse.json({ ok: true })
 }

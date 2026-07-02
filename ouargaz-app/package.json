@@ -9,7 +9,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db": "npm run db:generate && npm run db:push && npm run db:seed"
+    "db": "npm run db:generate && npm run db:push && npm run db:seed",
+    "ws": "node scripts/ws-server.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
@@ -28,7 +29,8 @@
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "recharts": "^2.12.7",
-    "tailwind-merge": "^2.4.0"
+    "tailwind-merge": "^2.4.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

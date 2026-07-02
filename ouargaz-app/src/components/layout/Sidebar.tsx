@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useNotifications } from '@/context/NotificationContext'
 import {
   BarChart3,
   ClipboardList,
@@ -38,33 +39,32 @@ const navGroups: Array<{ group: string; items: NavItem[] }> = [
     group: 'OPÉRATIONS',
     items: [
       { href: '/dashboard', icon: BarChart3, label: 'Dashboard', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'CONSULTATION'] },
-      { href: '/saisie', icon: ClipboardList, label: 'Saisie Journalière', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF'] },
-      { href: '/historique', icon: History, label: 'Historique', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'CONSULTATION'] },
-      { href: '/mouvements-camions', icon: Truck, label: 'Mouvements Camions', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'AGENT_SAISIE', 'CHEF_EQUIPE', 'CONSULTATION'] },
+      { href: '/saisie', icon: ClipboardList, label: 'Saisie Journalière', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'AGENT_SAISIE', 'CHEF_EQUIPE'] },
+      { href: '/historique', icon: History, label: 'Historique Camions', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'CONSULTATION', 'AGENT_SAISIE', 'CHEF_EQUIPE'] },
+      { href: '/mouvements-camions', icon: Truck, label: 'Mouvements Camions', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'CONSULTATION', 'AGENT_SAISIE', 'CHEF_EQUIPE'] },
     ],
   },
   {
-    group: 'RAPPORTS & EXPORTS',
+    group: 'RAPPORTS',
     items: [
-      { href: '/rapports', icon: FileText, label: 'Rapports', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'CONSULTATION'] },
+      { href: '/rapports', icon: FileText, label: 'Rapport Journalier', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'CONSULTATION'] },
       { href: '/exports', icon: Download, label: 'Exports Excel', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'CONSULTATION'] },
     ],
   },
   {
-    group: 'ADMINISTRATION',
+    group: 'CONFIGURATIONS',
     items: [
       { href: '/referentiels', icon: Database, label: 'Référentiels', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'CONSULTATION'] },
-      { href: '/cloture', icon: LockKeyhole, label: 'Clôture', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF'] },
-      { href: '/audit', icon: ShieldCheck, label: 'Audit', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF', 'CONSULTATION'] },
-      { href: '/administration', icon: Settings, label: 'Administration', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE'] },
-      { href: '/administration/kpi-profils', icon: SlidersHorizontal, label: 'KPI par profil', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE'] },
+      { href: '/cloture', icon: ShieldCheck, label: 'Validation / Clôture', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE', 'ADMINISTRATIF'] },
+      { href: '/audit', icon: SlidersHorizontal, label: 'Pistes d’Audit', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE'] },
+      { href: '/administration', icon: LockKeyhole, label: 'Administration', roles: ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE'] },
     ],
   },
 ]
 
 const roleColors: Record<string, string> = {
   CHEF_CENTRE: '#DA1A1A',
-  ADJOINT_CHEF_CENTRE: '#B00020',
+  ADJOINT_CHEF_CENTRE: '#DA1A1A',
   ADMINISTRATIF: '#0066CC',
   CONSULTATION: '#00D97E',
   AGENT_SAISIE: '#FF6B00',
@@ -81,26 +81,34 @@ const roleLabels: Record<string, string> = {
 }
 
 export default function Sidebar({ user, collapsed, onCollapseToggle, currentPath }: SidebarProps) {
-  const [unread, setUnread] = useState(0)
+  const { unreadCount, initSession } = useNotifications()
   const [menuConfig, setMenuConfig] = useState<string[] | null>(null)
+
   useEffect(() => {
-    const loadNotif = () => fetch('/api/notifications').then(r => r.json()).then(j => setUnread(j.unread || 0)).catch(() => {})
+    if (user) {
+      initSession(user)
+    }
+  }, [user, initSession])
+
+  useEffect(() => {
     const loadMenuConfig = () => fetch('/api/admin-dashboard-config', { cache: 'no-store' }).then(r => r.json()).then(j => {
       const cfg = (j.configs || []).find((c: any) => c.role === user.role)
       if (cfg) { try { const m = JSON.parse(cfg.menus || '[]'); setMenuConfig(Array.isArray(m) ? m : null) } catch { setMenuConfig(null) } }
     }).catch(() => {})
-    loadNotif(); loadMenuConfig()
-    const t = setInterval(loadNotif, 30000)
-    const t2 = setInterval(loadMenuConfig, 3000)
+    loadMenuConfig()
     const listener = () => loadMenuConfig()
     window.addEventListener('ouargaz-profile-config-updated', listener)
     window.addEventListener('storage', listener)
-    return () => { clearInterval(t); clearInterval(t2); window.removeEventListener('ouargaz-profile-config-updated', listener); window.removeEventListener('storage', listener) }
+    return () => {
+      window.removeEventListener('ouargaz-profile-config-updated', listener)
+      window.removeEventListener('storage', listener)
+    }
   }, [user.role])
+
+  const unread = unreadCount
   const isActive = (href: string) => currentPath === href || currentPath.startsWith(href + '/')
   const isFullAccess = ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE'].includes(user.role)
 
-  // Mapping href → clé de config menu (page kpi-profils)
   const menuKey: Record<string, string> = {
     '/dashboard': 'dashboard',
     '/saisie': 'saisie_journaliere',
