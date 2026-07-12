@@ -159,17 +159,16 @@ class ApiService {
 
   static Future<void> loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    baseUrl = prefs.getString('base_url') ?? '';
+    baseUrl = 'https://ous-gaz-project.vercel.app';
     _cookie = prefs.getString('session_cookie');
   }
 
-  static Future<void> saveConfig(String url, String username, String password, String cookie) async {
+  static Future<void> saveConfig(String username, String password, String cookie) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('base_url', url);
     await prefs.setString('session_username', username);
     await prefs.setString('session_password', password);
     await prefs.setString('session_cookie', cookie);
-    baseUrl = url;
+    // baseUrl remains the global production URL
     _cookie = cookie;
   }
 
@@ -178,18 +177,19 @@ class ApiService {
     if (_cookie != null) 'Cookie': _cookie!,
   };
 
-  static Future<Map<String, dynamic>?> login(String url, String username, String password) async {
+  static Future<Map<String, dynamic>?> login(String username, String password) async {
     try {
       final resp = await http.post(
-        Uri.parse('$url/api/auth/login'),
+        Uri.parse('$baseUrl/api/auth/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'username': username, 'password': password}),
       ).timeout(const Duration(seconds: 10));
+      print(resp.headers);
       if (resp.statusCode == 200) {
         final cookie = resp.headers['set-cookie'] ?? '';
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         if (data['user'] != null) {
-          await saveConfig(url, username, password, cookie);
+          await saveConfig(username, password, cookie);
           return data['user'] as Map<String, dynamic>;
         }
       }
@@ -407,7 +407,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _urlCtrl = TextEditingController(text: 'http://');
+  final _urlCtrl = TextEditingController(text: 'https://ous-gaz-project.vercel.app');
   final _userCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _loading = false;
@@ -422,12 +422,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loadSaved() async {
     final prefs = await SharedPreferences.getInstance();
-    final url = prefs.getString('base_url') ?? '';
     final user = prefs.getString('session_username') ?? '';
     final pass = prefs.getString('session_password') ?? '';
-    if (url.isNotEmpty && user.isNotEmpty) {
+    if (user.isNotEmpty) {
       setState(() {
-        _urlCtrl.text = url;
         _userCtrl.text = user;
         _passCtrl.text = pass;
         _remember = true;
@@ -440,8 +438,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _loading = true;
       _error = '';
     });
-    final url = _urlCtrl.text.trim().replaceAll(RegExp(r'/$'), '');
-    final user = await ApiService.login(url, _userCtrl.text.trim(), _passCtrl.text.trim());
+    final user = await ApiService.login(_userCtrl.text.trim(), _passCtrl.text.trim());
     if (user != null) {
       if (user['role'] != 'CHEF_EQUIPE' && user['role'] != 'DEPOSITAIRE') {
         setState(() {
@@ -451,7 +448,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         if (_remember) {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('base_url', url);
+          // No need to store base_url as we use the global production endpoint
           await prefs.setString('session_username', _userCtrl.text.trim());
           await prefs.setString('session_password', _passCtrl.text.trim());
         }
@@ -503,15 +500,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text('OUARGAZ', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 3)),
                 const Text('Chef d\'équipe Mobile', style: TextStyle(color: kMuted, fontSize: 14, letterSpacing: 1)),
                 const SizedBox(height: 40),
-                TextField(
-                  controller: _urlCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'URL serveur',
-                    prefixIcon: const Icon(Icons.link, color: kMuted),
-                    hintText: 'http://192.168.1.100:3000',
-                  ),
-                ),
-                const SizedBox(height: 14),
                 TextField(
                   controller: _userCtrl,
                   decoration: InputDecoration(
