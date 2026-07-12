@@ -66,8 +66,9 @@ const navGroups: Array<{ group: string; items: NavItem[] }> = [
   {
     group: 'DÉPOSITAIRE',
     items: [
-      { href: '/suivi-camions', icon: Layers, label: 'Suivi Camions', roles: ['DEPOSITAIRE'] },
       { href: '/suivi-camions/dashboard', icon: BarChart3, label: 'Tableau de bord', roles: ['DEPOSITAIRE'] },
+      { href: '/suivi-camions', icon: Layers, label: 'Suivi Camions', roles: ['DEPOSITAIRE'] },
+      { href: '/suivi-camions/liste', icon: ClipboardList, label: 'Passages du jour', roles: ['DEPOSITAIRE'] },
     ],
   },
 ]
@@ -106,7 +107,7 @@ export default function Sidebar({ user, collapsed, onCollapseToggle, currentPath
     const loadMenuConfig = () => fetch('/api/admin-dashboard-config', { cache: 'no-store' }).then(r => r.json()).then(j => {
       const cfg = (j.configs || []).find((c: any) => c.role === user.role)
       if (cfg) { try { const m = JSON.parse(cfg.menus || '[]'); setMenuConfig(Array.isArray(m) ? m : null) } catch { setMenuConfig(null) } }
-    }).catch(() => {})
+    }).catch(() => { })
     loadMenuConfig()
     const listener = () => loadMenuConfig()
     window.addEventListener('ouargaz-profile-config-updated', listener)
@@ -118,7 +119,19 @@ export default function Sidebar({ user, collapsed, onCollapseToggle, currentPath
   }, [user.role])
 
   const unread = unreadCount
-  const isActive = (href: string) => currentPath === href || currentPath.startsWith(href + '/')
+  const isActive = (href: string) => {
+    if (currentPath === href) return true
+    if (currentPath.startsWith(href + '/')) {
+      const allHrefs = navGroups.flatMap(g => g.items.map(i => i.href))
+      const hasBetterMatch = allHrefs.some(h =>
+        h !== href &&
+        h.length > href.length &&
+        (currentPath === h || currentPath.startsWith(h + '/'))
+      )
+      return !hasBetterMatch
+    }
+    return false
+  }
   const isFullAccess = ['CHEF_CENTRE', 'ADJOINT_CHEF_CENTRE'].includes(user.role)
 
   const menuKey: Record<string, string> = {
@@ -195,7 +208,7 @@ export default function Sidebar({ user, collapsed, onCollapseToggle, currentPath
                       <Icon size={18} strokeWidth={active ? 2.8 : 2.2} />
                     </span>
                     {!collapsed && <span className="text-sm truncate">{item.label}</span>}
-                    {item.href === '/mouvements-camions' && unread > 0 && <span className="absolute right-2 top-2 min-w-5 h-5 px-1 rounded-full text-[10px] font-black flex items-center justify-center text-white" style={{background:'#DA1A1A'}}>{unread}</span>}
+                    {item.href === '/mouvements-camions' && unread > 0 && <span className="absolute right-2 top-2 min-w-5 h-5 px-1 rounded-full text-[10px] font-black flex items-center justify-center text-white" style={{ background: '#DA1A1A' }}>{unread}</span>}
                     {collapsed && (
                       <div className="absolute left-full ml-3 px-3 py-2 rounded-xl text-xs font-bold bg-gray-950 text-white pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 border border-white/10 shadow-2xl">
                         {item.label}

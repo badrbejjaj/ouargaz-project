@@ -6,7 +6,7 @@ import { canManageQueue, canProcessInternal, canValidateExit } from '@/lib/roles
 
 type Camion = Record<string, any>
 type User = { username: string; role: string; name: string }
-type Tab = 'attente' | 'internes' | 'sortie' | 'historique' | 'kpi'
+type Tab = 'en_route' | 'attente' | 'internes' | 'sortie' | 'historique' | 'kpi'
 const qkeys = ['12kg','6kg','3kg'] as const
 
 const makeEmptyForm = () => ({
@@ -95,7 +95,7 @@ export default function MouvementsCamionsPage(){
   const unread = unreadCount
 
   const load = useCallback(async () => {
-    const q = tab==='historique' ? `all=1&date=${date}` : tab==='kpi' ? `all=1&date=${date}` : tab==='internes' ? `statut=TOUS` : `statut=${tab==='attente'?'EN_ATTENTE':tab==='sortie'?'PRET_A_SORTIR':'TOUS'}`
+    const q = tab==='historique' ? `all=1&date=${date}` : tab==='kpi' ? `all=1&date=${date}` : tab==='internes' ? `statut=TOUS` : tab==='en_route' ? `statut=EN_ROUTE` : `statut=${tab==='attente'?'EN_ATTENTE':tab==='sortie'?'PRET_A_SORTIR':'TOUS'}`
     const r=await fetch(`/api/mouvements-camions?${q}`).catch(()=>null)
     if(!r?.ok) return
     const j=await r.json()
@@ -160,7 +160,7 @@ export default function MouvementsCamionsPage(){
   const internes=camions.filter((c:any)=>['EN_COURS_TRAITEMENT','DEMARRAGE_EMPLISSAGE'].includes(c.statut))
   const list = tab==='internes'?internes:camions
   const isFullAccess = ['CHEF_CENTRE','ADJOINT_CHEF_CENTRE'].includes(user?.role || '')
-  const allowedTabs: Tab[] = isFullAccess ? ['attente','internes','sortie','historique','kpi'] : user?.role==='AGENT_SAISIE' ? ['attente','sortie','historique'] : user?.role==='CHEF_EQUIPE' ? ['attente','internes','historique'] : user?.role==='CONSULTATION' ? ['attente','internes','sortie','historique','kpi'] : ['attente','internes','sortie','historique','kpi']
+  const allowedTabs: Tab[] = isFullAccess ? ['en_route','attente','internes','sortie','historique','kpi'] : user?.role==='AGENT_SAISIE' ? ['en_route','attente','sortie','historique'] : user?.role==='CHEF_EQUIPE' ? ['en_route','attente','internes','historique'] : user?.role==='CONSULTATION' ? ['en_route','attente','internes','sortie','historique','kpi'] : ['en_route','attente','internes','sortie','historique','kpi']
   useEffect(()=>{ if(user && !allowedTabs.includes(tab)) setTab(allowedTabs[0]) }, [user?.role, tab])
 
   return <div className="space-y-6">
@@ -210,7 +210,7 @@ export default function MouvementsCamionsPage(){
           if(isInternes){ setNewInternes(false) }
           if(isSortie){ setNewPrets(false) }
         }} className={tab===t?'btn-primary':'btn-secondary'}>
-          {t==='attente'?'File d\'attente':t==='internes'?'Camions internes':t==='sortie'?'Prêts à sortir':t==='historique'?'Historique':'KPI & graphes'}
+          {t==='en_route'?'Camions en route':t==='attente'?'File d\'attente':t==='internes'?'Camions internes':t==='sortie'?'Prêts à sortir':t==='historique'?'Historique':'KPI & graphes'}
           {isInternes && newInternes && tab!=='internes' ? <span className="ml-2 rounded-full bg-red-600 px-2 text-white text-xs">●</span> : null}
           {isSortie && newPrets && tab!=='sortie' ? <span className="ml-2 rounded-full bg-red-600 px-2 text-white text-xs">●</span> : null}
         </button>
@@ -381,6 +381,15 @@ function Detail({selected,setSelected,act,canQueue,canProcess,canExit,isChefEqui
       <Read label="Sorti par" value={c.exitedBy}/>
     </div>
 
+    {/* Actions EN_ROUTE — Agent saisie uniquement */}
+    {c.statut==='EN_ROUTE' && canQueue && <>
+      <div className="border-t pt-4" style={{borderColor:'var(--border-color)'}}>
+        <div className="text-xs font-black uppercase mb-3" style={{color:'var(--text-muted)'}}>Actions (Camion en route)</div>
+        <button className="btn-primary w-full py-2.5 font-bold" onClick={()=>act('confirmer-arrivee')}>📍 Confirmer l'arrivée du camion</button>
+      </div>
+    </>}
+    {c.statut==='EN_ROUTE' && !canQueue && <div className="text-sm p-3 rounded-xl" style={{background:'rgba(255,255,255,.04)',color:'var(--text-muted)'}}>📋 Lecture seule — en route.</div>}
+
     {/* Actions EN_ATTENTE — Agent saisie uniquement */}
     {c.statut==='EN_ATTENTE' && canQueue && <>
       <div className="border-t pt-4" style={{borderColor:'var(--border-color)'}}>
@@ -490,6 +499,7 @@ function KpiDashboard({stats}:{stats:any}){
   const mc=stats.dayCounts||{}
   return <div className="space-y-5">
     <Section title="Camions" color="#DA1A1A">
+      <Kpi label="En route" value={mc.enRoute||0} color="#C084FC"/>
       <Kpi label="Arrivés" value={mc.arrives||0}/>
       <Kpi label="En attente" value={mc.attente||0} color="#FF6B00"/>
       <Kpi label="Internes" value={mc.internes||0} color="#0066CC"/>

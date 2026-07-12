@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
   const day = await prisma.camionDepositaire.findMany({ where: { date } })
   const monthRows = await prisma.camionDepositaire.findMany({ where: { date: { startsWith: month } } })
   const counts = (rows:any[]) => ({
-    arrives: rows.filter(r => r.statut !== STATUTS.ANNULE).length,
+    arrives: rows.filter(r => r.statut !== STATUTS.ANNULE && r.statut !== STATUTS.EN_ROUTE).length,
+    enRoute: rows.filter(r => r.statut === STATUTS.EN_ROUTE).length,
     attente: rows.filter(r => r.statut === STATUTS.EN_ATTENTE).length,
     internes: rows.filter(r => [STATUTS.EN_COURS_TRAITEMENT, STATUTS.DEMARRAGE_EMPLISSAGE].includes(r.statut)).length,
     traitement: rows.filter(r => r.statut === STATUTS.EN_COURS_TRAITEMENT).length,

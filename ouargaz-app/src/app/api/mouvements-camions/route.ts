@@ -68,13 +68,28 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req)
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-  if (!canManageQueue(session.role)) return NextResponse.json({ error: 'Seul l’agent de saisie/garde peut ajouter un camion en file d’attente' }, { status: 403 })
+  const isDepositaire = session.role === 'DEPOSITAIRE'
+  if (!isDepositaire && !canManageQueue(session.role)) return NextResponse.json({ error: 'Seul l’agent de saisie/garde ou un dépositaire peut ajouter un camion en file d’attente' }, { status: 403 })
   const body = await req.json()
-  const client = s(body.client), marque = s(body.marque), matricule = s(body.matricule), chauffeur = s(body.chauffeur), numero_bc = s(body.numero_bc)
+  let client = s(body.client)
+  let marque = s(body.marque)
+  if (isDepositaire) {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: session.id },
+      include: { client: true }
+    })
+    if (!dbUser || !dbUser.client) {
+      return NextResponse.json({ error: 'Dépositaire non associé à un client' }, { status: 400 })
+    }
+    client = dbUser.client.name
+    marque = dbUser.client.marque
+  }
+  const matricule = s(body.matricule), chauffeur = s(body.chauffeur), numero_bc = s(body.numero_bc)
   if (!client || !marque || !matricule || !chauffeur || !numero_bc) return NextResponse.json({ error: 'Client, marque, matricule, chauffeur et N° BC sont obligatoires' }, { status: 400 })
   // V6.4 : à l'entrée, le camion ramène VIDES + DÉFECTUEUSES + ÉTRANGÈRES. Zéro pleine à l'entrée.
+  const statut = isDepositaire ? STATUTS.EN_ROUTE : STATUTS.EN_ATTENTE
   const data: any = {
-    date: s(body.date) || today(), client, marque, matricule, chauffeur, numero_bc,
+    date: s(body.date) || today(), client, marque, matricule, chauffeur, numero_bc, statut,
     saisie_12kg: 0, saisie_6kg: 0, saisie_3kg: 0,
     vides_12kg: n(body.vides_12kg), vides_6kg: n(body.vides_6kg), vides_3kg: n(body.vides_3kg),
     def_rendues_12kg: n(body.def_rendues_12kg), def_rendues_6kg: n(body.def_rendues_6kg), def_rendues_3kg: n(body.def_rendues_3kg),
@@ -85,8 +100,12 @@ export async function POST(req: NextRequest) {
     createdBy: session.username,
   }
   const camion = await prisma.camionDepositaire.create({ data })
-  await log(camion.id, 'CREATION_FILE_ATTENTE', session, null, camion.statut, 'Camion ajouté en file d’attente V6.4 : vides + défectueuses + étrangères', null, data)
-  await notifyAll('Nouveau camion en attente', `Le camion ${matricule} de ${client} a été ajouté en file d'attente.`)
+  const logMsg = isDepositaire ? 'Camion déclaré en route par le dépositaire' : 'Camion ajouté en file d’attente V6.4 : vides + défectueuses + étrangères'
+  await log(camion.id, 'CREATION_FILE_ATTENTE', session, null, camion.statut, logMsg, null, data)
+  const notificationMsg = isDepositaire 
+    ? `Le camion ${matricule} de ${client} est en route vers le centre.`
+    : `Le camion ${matricule} de ${client} a été ajouté en file d'attente.`
+  await notifyAll('Nouveau camion', notificationMsg)
   await triggerBroadcast('CAMION_UPDATE')
   return NextResponse.json({ camion })
 }
@@ -100,6 +119,16 @@ export async function PUT(req: NextRequest) {
   console.log("🚀 ~ PUT ~ camion:", camion)
   if (!camion) return NextResponse.json({ error: 'Camion introuvable' }, { status: 404 })
   const action = s(body.action)
+
+  if (action === 'confirmer-arrivee') {
+    if (!canManageQueue(session.role)) return NextResponse.json({ error: 'Confirmation d’arrivée réservée à l’agent de saisie/garde' }, { status: 403 })
+    if (camion.statut !== STATUTS.EN_ROUTE) return NextResponse.json({ error: 'Le camion doit être en route' }, { status: 400 })
+    const updated = await prisma.camionDepositaire.update({ where: { id }, data: { statut: STATUTS.EN_ATTENTE, arriveeAt: new Date() } })
+    await log(id, 'ARRIVEE_FILE_ATTENTE', session, camion.statut, STATUTS.EN_ATTENTE, 'Arrivée confirmée par l’agent de saisie')
+    await notifyAll('Arrivée camion confirmée', `Le camion ${camion.matricule} de ${camion.client} est arrivé au centre.`)
+    await triggerBroadcast('CAMION_UPDATE')
+    return NextResponse.json({ camion: updated })
+  }
 
   if (action === 'update-attente') {
     if (!canManageQueue(session.role)) return NextResponse.json({ error: 'Modification file d’attente réservée à l’agent de saisie/garde' }, { status: 403 })

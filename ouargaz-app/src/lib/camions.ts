@@ -1,4 +1,5 @@
 export const STATUTS = {
+  EN_ROUTE: 'EN_ROUTE',
   EN_ATTENTE: 'EN_ATTENTE',
   EN_COURS_TRAITEMENT: 'EN_COURS_TRAITEMENT',
   DEMARRAGE_EMPLISSAGE: 'DEMARRAGE_EMPLISSAGE',
@@ -8,6 +9,7 @@ export const STATUTS = {
 } as const
 
 export const STATUT_LABELS: Record<string, string> = {
+  EN_ROUTE: 'En route',
   EN_ATTENTE: 'File d\'attente',
   EN_COURS_TRAITEMENT: 'En cours de traitement',
   DEMARRAGE_EMPLISSAGE: 'Démarrage emplissage',

@@ -328,6 +328,19 @@ class ApiService {
       return false;
     }
   }
+
+  static Future<bool> addCamion(Map<String, dynamic> data) async {
+    try {
+      final resp = await http.post(
+        Uri.parse('$baseUrl/api/mouvements-camions'),
+        headers: _headers,
+        body: jsonEncode(data),
+      ).timeout(const Duration(seconds: 10));
+      return resp.statusCode == 200 || resp.statusCode == 201;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 // ─── AUTH WRAPPER ─────────────────────────────────────────────────────────────
@@ -430,9 +443,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final url = _urlCtrl.text.trim().replaceAll(RegExp(r'/$'), '');
     final user = await ApiService.login(url, _userCtrl.text.trim(), _passCtrl.text.trim());
     if (user != null) {
-      if (user['role'] != 'CHEF_EQUIPE') {
+      if (user['role'] != 'CHEF_EQUIPE' && user['role'] != 'DEPOSITAIRE') {
         setState(() {
-          _error = 'Accès réservé au Chef d\'équipe';
+          _error = 'Accès réservé au Chef d\'équipe ou Dépositaire';
           _loading = false;
         });
       } else {
@@ -580,6 +593,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0;
   String _kpiPeriod = 'day';
+  String _selectedStatutFilter = 'TOUS';
   List<Map<String, dynamic>> _fileAttente = [];
   List<Map<String, dynamic>> _internes = [];
   List<Map<String, dynamic>> _prets = [];
@@ -628,13 +642,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return _buildChefEquipeScaffold(unread);
   }
 
-  // ─── DEPOSITAIRE SCAFFOLD (2-tab: Suivi + Profil) ─────────────────────────
+  // ─── DEPOSITAIRE SCAFFOLD (4-tab: Accueil, Suivi, KPI, Profil) ─────────────────────────
   Widget _buildDepositaireScaffold(int unread) {
     return Scaffold(
       body: IndexedStack(
         index: _tab,
         children: [
           _buildDepositaireAccueil(unread),
+          _buildDepositaireSuivi(),
+          _stats != null ? SafeArea(child: _buildKpi()) : const Center(child: CircularProgressIndicator(color: kPrimary)),
           _buildProfilTab(),
         ],
       ),
@@ -646,7 +662,7 @@ class _HomeScreenState extends State<HomeScreen> {
           NavigationDestination(
             icon: Stack(
               children: [
-                const Icon(Icons.local_shipping_outlined),
+                const Icon(Icons.home_outlined),
                 if (unread > 0)
                   Positioned(
                     top: 0,
@@ -655,8 +671,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
               ],
             ),
-            label: 'Suivi',
+            label: 'Accueil',
           ),
+          const NavigationDestination(icon: Icon(Icons.history), label: 'Suivi'),
+          const NavigationDestination(icon: Icon(Icons.analytics_outlined), label: 'KPI'),
           const NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profil'),
         ],
       ),
@@ -753,6 +771,128 @@ class _HomeScreenState extends State<HomeScreen> {
           const NavigationDestination(icon: Icon(Icons.history), label: 'Historique'),
           const NavigationDestination(icon: Icon(Icons.analytics_outlined), label: 'KPI'),
         ],
+      ),
+    );
+  }
+
+  void _showAddCamionDialog(BuildContext context) {
+    final matriculeCtrl = TextEditingController();
+    final chauffeurCtrl = TextEditingController();
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: ThemeController.isDark.value ? kCard : Colors.white,
+              title: const Text('Ajouter un camion'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: matriculeCtrl,
+                    decoration: const InputDecoration(labelText: 'Matricule'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: chauffeurCtrl,
+                    decoration: const InputDecoration(labelText: 'Chauffeur'),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Annuler'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: kPrimary, foregroundColor: Colors.white),
+                  onPressed: isLoading ? null : () async {
+                    if (matriculeCtrl.text.isEmpty || chauffeurCtrl.text.isEmpty) return;
+                    setDialogState(() => isLoading = true);
+                    final success = await ApiService.addCamion({
+                      'matricule': matriculeCtrl.text,
+                      'chauffeur': chauffeurCtrl.text,
+                    });
+                    if (success) {
+                      Navigator.pop(ctx);
+                      _load();
+                    } else {
+                      setDialogState(() => isLoading = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Erreur lors de l\'ajout')),
+                      );
+                    }
+                  },
+                  child: isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Ajouter'),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
+  Widget _buildDepositaireSuivi() {
+    final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: kPrimary,
+        child: const Icon(Icons.add, color: Colors.white),
+        onPressed: () => _showAddCamionDialog(context),
+      ),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: ApiService.getHistorique(date),
+        builder: (ctx, snap) {
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: kPrimary));
+          
+          var list = snap.data!;
+          if (_selectedStatutFilter != 'TOUS') {
+            list = list.where((c) => c['statut'] == _selectedStatutFilter).toList();
+          }
+
+          return SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: ['TOUS', 'EN_ATTENTE', 'EN_CHARGEMENT', 'PRET', 'SORTI'].map((s) {
+                        final isSelected = _selectedStatutFilter == s;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(s.replaceAll('_', ' ')),
+                            selected: isSelected,
+                            selectedColor: kPrimary.withOpacity(0.2),
+                            onSelected: (v) {
+                              if (v) setState(() => _selectedStatutFilter = s);
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: list.isEmpty
+                      ? const Center(child: Text('Aucun camion', style: TextStyle(color: kMuted)))
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: list.length,
+                          itemBuilder: (ctx, i) => Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(title: Text(list[i]['matricule'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Text('${list[i]['chauffeur'] ?? list[i]['client'] ?? ''} • ${list[i]['statut']}', style: const TextStyle(color: kMuted, fontSize: 11)))),
+                        ),
+                ),
+              ],
+            ),
+          );
+        }
       ),
     );
   }
