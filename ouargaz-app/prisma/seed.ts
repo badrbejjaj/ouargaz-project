@@ -5,6 +5,12 @@ import { BAREME_DATA } from '../src/lib/bareme-data'
 const prisma = new PrismaClient()
 
 async function main() {
+  const existing_users = await prisma.user.findFirst();
+  if (existing_users) {
+    console.log('✅ Users already exist');
+    return;
+  }
+
   console.log('🌱 Starting database seed...')
 
   // Create users
@@ -171,11 +177,11 @@ async function main() {
 
 
   const profileConfigs = [
-    { role: 'CHEF_CENTRE', kpis: ['camions_arrives','camions_entres','camions_internes','camions_prets_sortir','camions_sortis','tonnage_jour_total','def_rendues_total','def_remplacees_total','taux_remplacement_global','ecart_ventes'], menus: ['dashboard','saisie','rapports','exports','referentiels','mouvements_camions','administration'] },
-    { role: 'ADMINISTRATIF', kpis: ['ventesJour','ventesMois','stockVrac','approJour'], menus: ['dashboard','saisie','historique','rapports','exports'] },
-    { role: 'AGENT_SAISIE', kpis: ['camions_arrives','camions_entres','camions_prets_sortir','camions_sortis','tonnage_jour_total','ecart_ventes'], menus: ['dashboard','mouvements_camions','historique_camions'] },
-    { role: 'CHEF_EQUIPE', kpis: ['camions_internes','camions_emplissage','def_rendues_total','def_remplacees_total','taux_remplacement_global'], menus: ['dashboard','mouvements_camions','historique_camions'] },
-    { role: 'CONSULTATION', kpis: ['camions_sortis','tonnage_jour_total'], menus: ['dashboard','historique','mouvements_camions'] },
+    { role: 'CHEF_CENTRE', kpis: ['camions_arrives', 'camions_entres', 'camions_internes', 'camions_prets_sortir', 'camions_sortis', 'tonnage_jour_total', 'def_rendues_total', 'def_remplacees_total', 'taux_remplacement_global', 'ecart_ventes'], menus: ['dashboard', 'saisie', 'rapports', 'exports', 'referentiels', 'mouvements_camions', 'administration'] },
+    { role: 'ADMINISTRATIF', kpis: ['ventesJour', 'ventesMois', 'stockVrac', 'approJour'], menus: ['dashboard', 'saisie', 'historique', 'rapports', 'exports'] },
+    { role: 'AGENT_SAISIE', kpis: ['camions_arrives', 'camions_entres', 'camions_prets_sortir', 'camions_sortis', 'tonnage_jour_total', 'ecart_ventes'], menus: ['dashboard', 'mouvements_camions', 'historique_camions'] },
+    { role: 'CHEF_EQUIPE', kpis: ['camions_internes', 'camions_emplissage', 'def_rendues_total', 'def_remplacees_total', 'taux_remplacement_global'], menus: ['dashboard', 'mouvements_camions', 'historique_camions'] },
+    { role: 'CONSULTATION', kpis: ['camions_sortis', 'tonnage_jour_total'], menus: ['dashboard', 'historique', 'mouvements_camions'] },
   ]
   for (const cfg of profileConfigs) {
     await prisma.profileDashboardConfig.upsert({
