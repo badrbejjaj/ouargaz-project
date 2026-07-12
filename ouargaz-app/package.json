@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node prisma/setup-prod.js && prisma generate && next build",
+    "build": "node prisma/setup-prod.js && prisma generate && prisma db push && next build",
     "start": "next start",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
